@@ -1,0 +1,7 @@
+.graphify-site/
+graphify-out/
+.graphify_*.json
+.codex/
+node_modules/
+dist/
+*.log
