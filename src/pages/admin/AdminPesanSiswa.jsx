@@ -12,7 +12,17 @@ const quickReplies = [
 ];
 
 export default function AdminPesanSiswa() {
-  const { messages, setMessages, isReady, error, reload } = useStudentMessages();
+  const {
+    threads,
+    isReady,
+    error,
+    reload,
+    onReply,
+    isReplyPending,
+    onStatusChange,
+    isStatusPending,
+    allowDelete,
+  } = useStudentMessages();
 
   return (
     <div className="space-y-7 lg:space-y-8">
@@ -30,11 +40,15 @@ export default function AdminPesanSiswa() {
         emptyTitle="Tidak ada pesan siswa"
         emptyDescription="Pesan dari siswa terdaftar akan tampil di sini untuk ditindaklanjuti admin."
         quickReplies={quickReplies}
-        threads={messages}
-        setThreads={setMessages}
+        threads={threads}
         isReady={isReady}
         error={error}
         retryAction={reload}
+        onReply={onReply}
+        isReplyPending={isReplyPending}
+        onStatusChange={onStatusChange}
+        isStatusPending={isStatusPending}
+        allowDelete={allowDelete}
         resolveMetaLine={(thread) => `Dari ${thread.senderName}${thread.courseTitle ? ` - ${thread.courseTitle}` : ''}`}
         resolveSummaryLine={(thread) => getLatestThreadPreview(thread)}
       />

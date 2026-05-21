@@ -38,6 +38,21 @@ export function fetchStudentModules() {
   return apiRequest('/api/v1/student/modules');
 }
 
+export function fetchStudentSchedule() {
+  return apiRequest('/api/v1/student/schedule');
+}
+
+export function checkInStudentScheduleSession(sessionId, payload = {}) {
+  if (!sessionId) {
+    throw new Error('Sesi jadwal tidak valid.');
+  }
+
+  return apiRequest(`/api/v1/student/schedule/${encodeURIComponent(sessionId)}/check-in`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
 export function fetchStudentMessages() {
   return apiRequest('/api/v1/student/messages');
 }

@@ -57,6 +57,37 @@ function Get-CommandSource {
     return $Command.Source
 }
 
+function Get-OptionalTextFileContent {
+    param(
+        [string]$Path,
+        [switch]$Trim
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+
+    $Content = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $Content) {
+        return $null
+    }
+
+    if ($Trim) {
+        $Content = $Content.Trim()
+        if ([string]::IsNullOrWhiteSpace($Content)) {
+            return $null
+        }
+
+        return $Content
+    }
+
+    if ($Content.Length -eq 0) {
+        return $null
+    }
+
+    return $Content
+}
+
 function Invoke-NativeCommand {
     param(
         [string]$FilePath,
@@ -145,7 +176,12 @@ function Get-PyLauncherPython {
         return $null
     }
 
-    return $Detected.Trim()
+    if ($null -eq $Detected) {
+        return $null
+    }
+
+    $Trimmed = $Detected.Trim()
+    return if ([string]::IsNullOrWhiteSpace($Trimmed)) { $null } else { $Trimmed }
 }
 
 function Resolve-GraphifyPython {
@@ -153,10 +189,11 @@ function Resolve-GraphifyPython {
 
     $Candidates = New-Object System.Collections.Generic.List[object]
 
-    if (Test-Path -LiteralPath $PinnedPythonFile -PathType Leaf) {
+    $PinnedPython = Get-OptionalTextFileContent -Path $PinnedPythonFile -Trim
+    if ($PinnedPython) {
         $Candidates.Add([pscustomobject]@{
                 Source = "graphify-out/.graphify_python"
-                Path   = (Get-Content -LiteralPath $PinnedPythonFile -Raw).Trim()
+                Path   = $PinnedPython
             })
     }
 
@@ -213,7 +250,8 @@ function Resolve-GraphifyPython {
     }
 
     $PinnedExpectation = if (Test-Path -LiteralPath $PinnedPythonFile -PathType Leaf) {
-        (Get-Content -LiteralPath $PinnedPythonFile -Raw).Trim()
+        $PinnedPythonValue = Get-OptionalTextFileContent -Path $PinnedPythonFile -Trim
+        if ($PinnedPythonValue) { $PinnedPythonValue } else { "<empty>" }
     }
     else {
         "<missing>"
@@ -245,7 +283,16 @@ function Test-ManifestClean {
         }
     }
 
-    $ManifestText = (Get-Content -LiteralPath $ManifestPath -Raw).Replace("\", "/")
+    $ManifestText = Get-OptionalTextFileContent -Path $ManifestPath
+    if ($null -eq $ManifestText) {
+        return @{
+            IsClean  = $true
+            Matches  = @()
+            HasGraph = $false
+        }
+    }
+
+    $ManifestText = $ManifestText.Replace("\", "/")
     $Disallowed = @(
         ".graphify-site/",
         "/graphify-out/",
@@ -353,11 +400,7 @@ function Archive-GraphifyState {
 }
 
 function Get-GlobalSkillVersion {
-    if (-not (Test-Path -LiteralPath $GlobalSkillVersionFile -PathType Leaf)) {
-        return $null
-    }
-
-    return (Get-Content -LiteralPath $GlobalSkillVersionFile -Raw).Trim()
+    return Get-OptionalTextFileContent -Path $GlobalSkillVersionFile -Trim
 }
 
 function Test-AnyApiKeyConfigured {
@@ -372,7 +415,7 @@ function Test-AnyApiKeyConfigured {
 
 function Invoke-Doctor {
     $Resolution = Resolve-GraphifyPython -FullCheck
-    $Version = & $Resolution.Path -c "from importlib.metadata import version; print(version('graphifyy'))"
+    $Version = & $Resolution.Path -c "from importlib.metadata import version; print(version('graphify'))"
     if ($LASTEXITCODE -ne 0) {
         throw "Graphify runtime found but package version lookup failed."
     }

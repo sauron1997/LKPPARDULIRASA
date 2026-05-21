@@ -20,6 +20,30 @@ router.get('/students', asyncHandler(async (req, res) => {
   ok(res, adminService.listStudents(req.query || {}));
 }));
 
+router.get('/courses/:courseId/schedules', asyncHandler(async (req, res) => {
+  ok(res, adminService.listCourseSchedules(req.params.courseId));
+}));
+
+router.post('/courses/:courseId/schedules', asyncHandler(async (req, res) => {
+  ok(res, adminService.createCourseSchedule(req.params.courseId, req.body || {}));
+}));
+
+router.patch('/courses/:courseId/schedules/:scheduleId', asyncHandler(async (req, res) => {
+  ok(res, adminService.updateCourseSchedule(req.params.courseId, req.params.scheduleId, req.body || {}));
+}));
+
+router.delete('/courses/:courseId/schedules/:scheduleId', asyncHandler(async (req, res) => {
+  ok(res, adminService.removeCourseSchedule(req.params.courseId, req.params.scheduleId));
+}));
+
+router.get('/schedules/:scheduleId/attendance', asyncHandler(async (req, res) => {
+  ok(res, adminService.listScheduleAttendance(req.params.scheduleId));
+}));
+
+router.put('/schedules/:scheduleId/attendance', asyncHandler(async (req, res) => {
+  ok(res, adminService.updateScheduleAttendance(req.params.scheduleId, req.body || {}));
+}));
+
 router.get('/students/:studentId', asyncHandler(async (req, res) => {
   ok(res, adminService.getStudent(req.params.studentId));
 }));

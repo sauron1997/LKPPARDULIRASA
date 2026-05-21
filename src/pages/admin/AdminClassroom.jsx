@@ -3,12 +3,17 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   Bell,
   BookOpen,
+  CalendarDays,
   ClipboardCheck,
+  Clock,
+  Edit3,
   FileText,
   GraduationCap,
+  MapPin,
   MessageSquareText,
   Plus,
   ShieldCheck,
+  Trash2,
   UserRoundPlus,
   Users,
 } from 'lucide-react';
@@ -52,14 +57,47 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { useAdminClassroomData } from '../../hooks/admin/useAdminClassroomData';
+import {
+  useAdminCourseScheduleQuery,
+  useAdminScheduleAttendanceQuery,
+  useCreateAdminScheduleSessionMutation,
+  useDeleteAdminScheduleSessionMutation,
+  useUpdateAdminScheduleAttendanceMutation,
+  useUpdateAdminScheduleSessionMutation,
+} from '../../hooks/admin/useScheduleQueries';
 import { getClassworkTypeConfig } from '../../utils/domainRelations';
 
 const TAB_ITEMS = [
   { key: 'stream', label: 'Stream' },
   { key: 'classwork', label: 'Classwork' },
+  { key: 'schedule', label: 'Schedule' },
   { key: 'people', label: 'People' },
   { key: 'grades', label: 'Grades' },
 ];
+
+const SCHEDULE_STATUS_OPTIONS = [
+  { value: 'scheduled', label: 'Terjadwal' },
+  { value: 'completed', label: 'Selesai' },
+  { value: 'cancelled', label: 'Dibatalkan' },
+];
+
+const ATTENDANCE_STATUS_OPTIONS = [
+  { value: 'unmarked', label: 'Belum ditandai', tone: 'slate' },
+  { value: 'present', label: 'Hadir', tone: 'emerald' },
+  { value: 'late', label: 'Terlambat', tone: 'amber' },
+  { value: 'excused', label: 'Izin', tone: 'blue' },
+  { value: 'absent', label: 'Alpa', tone: 'rose' },
+];
+
+const emptyScheduleDraft = {
+  title: '',
+  startsAt: '',
+  endsAt: '',
+  location: '',
+  instructorName: '',
+  status: 'scheduled',
+  notes: '',
+};
 
 const PEOPLE_FILTERS = [
   { key: 'all', label: 'Semua' },
@@ -74,6 +112,24 @@ function formatDate(value) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function formatDateOnly(value) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatTimeOnly(value) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
@@ -103,6 +159,42 @@ function buildTopicGroups(classroom) {
   return [...topicMap.values()];
 }
 
+function toDatetimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function toApiDateTime(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function getAttendanceOption(status) {
+  return ATTENDANCE_STATUS_OPTIONS.find((option) => option.value === status) || ATTENDANCE_STATUS_OPTIONS[0];
+}
+
+function createScheduleDraft(session = null) {
+  if (!session) {
+    return emptyScheduleDraft;
+  }
+
+  return {
+    title: session.title || '',
+    startsAt: toDatetimeLocal(session.startsAt),
+    endsAt: toDatetimeLocal(session.endsAt),
+    location: session.location || '',
+    instructorName: session.instructorName || '',
+    status: session.status || 'scheduled',
+    notes: session.notes || '',
+  };
+}
+
 function getPeopleCandidates(classroom) {
   return classroom.roster.filter((entry) => entry.enrollmentStatus !== 'active' && entry.paymentStatus === 'verified');
 }
@@ -111,8 +203,17 @@ export default function AdminClassroom() {
   const navigate = useNavigate();
   const { courseId, tab } = useParams();
   const classroomDomain = useAdminClassroomData();
+  const activeTab = TAB_ITEMS.some((item) => item.key === tab) ? tab : 'stream';
+  const scheduleCourseId = courseId || classroomDomain.defaultCourseId;
+  const scheduleQuery = useAdminCourseScheduleQuery(scheduleCourseId, {
+    enabled: classroomDomain.isReady && Boolean(scheduleCourseId) && activeTab === 'schedule',
+  });
   const [search, setSearch] = useState('');
   const [peopleFilter, setPeopleFilter] = useState('all');
+  const [selectedScheduleId, setSelectedScheduleId] = useState('');
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState('');
+  const [scheduleDraft, setScheduleDraft] = useState(emptyScheduleDraft);
   const [postDialogOpen, setPostDialogOpen] = useState(false);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState('');
@@ -126,6 +227,17 @@ export default function AdminClassroom() {
     dueAt: '',
     maxScore: '100',
   });
+  const scheduleSessions = scheduleQuery.data?.sessions || [];
+  const selectedSchedule = scheduleSessions.find((session) => String(session.id) === String(selectedScheduleId))
+    || scheduleSessions[0]
+    || null;
+  const attendanceQuery = useAdminScheduleAttendanceQuery(scheduleCourseId, selectedSchedule?.id, {
+    enabled: classroomDomain.isReady && activeTab === 'schedule' && Boolean(scheduleCourseId) && Boolean(selectedSchedule?.id),
+  });
+  const createScheduleMutation = useCreateAdminScheduleSessionMutation();
+  const updateScheduleMutation = useUpdateAdminScheduleSessionMutation();
+  const deleteScheduleMutation = useDeleteAdminScheduleSessionMutation();
+  const updateAttendanceMutation = useUpdateAdminScheduleAttendanceMutation();
 
   if (!classroomDomain.isReady) {
     return (
@@ -156,7 +268,6 @@ export default function AdminClassroom() {
     );
   }
 
-  const activeTab = TAB_ITEMS.some((item) => item.key === tab) ? tab : 'stream';
   const activeCourseId = courseId || classroomDomain.defaultCourseId;
   const classrooms = classroomDomain.classrooms;
   const activeClassroom = classrooms.find((item) => String(item.key) === String(activeCourseId)) || classrooms[0] || null;
@@ -184,6 +295,23 @@ export default function AdminClassroom() {
 
   const topicGroups = buildTopicGroups(activeClassroom);
   const peopleCandidates = getPeopleCandidates(activeClassroom);
+  const attendanceRoster = attendanceQuery.data?.roster || [];
+  const attendanceSummary = attendanceQuery.data?.summary || selectedSchedule?.attendanceSummary || {
+    total: 0,
+    present: 0,
+    late: 0,
+    excused: 0,
+    absent: 0,
+    unmarked: 0,
+  };
+  const isSavingSchedule = createScheduleMutation.isPending || updateScheduleMutation.isPending;
+  const scheduleError = scheduleQuery.error?.message
+    || createScheduleMutation.error?.message
+    || updateScheduleMutation.error?.message
+    || deleteScheduleMutation.error?.message
+    || updateAttendanceMutation.error?.message
+    || attendanceQuery.error?.message
+    || '';
   const systemItemMeta = {
     latihan: 'Latihan sistem dari assessment lama',
     teori: 'Ujian teori sistem dari assessment lama',
@@ -192,6 +320,76 @@ export default function AdminClassroom() {
 
   const handleTabChange = (nextTab) => {
     navigate(`/admin/classroom/${activeClassroom.key}/${nextTab}`);
+  };
+
+  const openCreateSchedule = () => {
+    setEditingScheduleId('');
+    setScheduleDraft(createScheduleDraft());
+    setScheduleDialogOpen(true);
+  };
+
+  const openEditSchedule = (session) => {
+    setEditingScheduleId(session.id);
+    setScheduleDraft(createScheduleDraft(session));
+    setScheduleDialogOpen(true);
+  };
+
+  const buildSchedulePayload = () => ({
+    title: scheduleDraft.title.trim(),
+    startsAt: toApiDateTime(scheduleDraft.startsAt),
+    endsAt: toApiDateTime(scheduleDraft.endsAt),
+    location: scheduleDraft.location.trim(),
+    instructorName: scheduleDraft.instructorName.trim(),
+    status: scheduleDraft.status,
+    notes: scheduleDraft.notes.trim(),
+  });
+
+  const saveScheduleSession = async () => {
+    const payload = buildSchedulePayload();
+
+    if (editingScheduleId) {
+      await updateScheduleMutation.mutateAsync({
+        courseId: activeClassroom.course.id,
+        sessionId: editingScheduleId,
+        payload,
+      });
+    } else {
+      const createdSession = await createScheduleMutation.mutateAsync({
+        courseId: activeClassroom.course.id,
+        payload,
+      });
+      setSelectedScheduleId(createdSession.id || '');
+    }
+
+    setScheduleDialogOpen(false);
+  };
+
+  const deleteScheduleSession = async (sessionId) => {
+    await deleteScheduleMutation.mutateAsync({
+      courseId: activeClassroom.course.id,
+      sessionId,
+    });
+
+    if (String(selectedScheduleId) === String(sessionId)) {
+      setSelectedScheduleId('');
+    }
+  };
+
+  const updateAttendanceStatus = (entry, status) => {
+    if (!selectedSchedule) {
+      return;
+    }
+
+    updateAttendanceMutation.mutate({
+      courseId: activeClassroom.course.id,
+      sessionId: selectedSchedule.id,
+      attendanceId: entry.id || entry.studentId || entry.enrollmentId,
+      payload: {
+        status,
+        studentId: entry.studentId,
+        enrollmentId: entry.enrollmentId,
+      },
+    });
   };
 
   const openCreatePost = () => {
@@ -509,6 +707,224 @@ export default function AdminClassroom() {
                 </div>
               </TabsContent>
 
+              <TabsContent value="schedule" className="space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Schedule</h3>
+                    <p className="text-sm text-slate-500">Atur sesi tatap muka atau online untuk course aktif, lalu tandai absensi per sesi.</p>
+                  </div>
+                  <AdminPrimaryButton onClick={openCreateSchedule}>
+                    <Plus data-icon="inline-start" />
+                    Tambah sesi
+                  </AdminPrimaryButton>
+                </div>
+
+                {scheduleError ? (
+                  <AdminNotice
+                    tone="rose"
+                    title="Jadwal belum bisa disinkronkan"
+                    description={scheduleError}
+                  />
+                ) : null}
+
+                {scheduleQuery.isPending ? (
+                  <AdminLoadingState
+                    title="Memuat jadwal kelas..."
+                    description="Sesi dan absensi course aktif sedang diambil dari API."
+                  />
+                ) : (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
+                    <Card className="bg-white">
+                      <CardHeader className="border-b">
+                        <CardTitle>Sesi kelas</CardTitle>
+                        <CardDescription>{scheduleSessions.length} sesi terjadwal untuk course ini.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3 pt-4">
+                        {scheduleSessions.map((session) => {
+                          const isSelected = selectedSchedule && String(selectedSchedule.id) === String(session.id);
+                          const summary = session.attendanceSummary || {};
+
+                          return (
+                            <button
+                              key={session.id}
+                              type="button"
+                              onClick={() => setSelectedScheduleId(session.id)}
+                              className={`w-full rounded-[24px] border px-4 py-4 text-left transition-colors ${
+                                isSelected
+                                  ? 'border-emerald-200 bg-emerald-50/80'
+                                  : 'border-slate-100 bg-slate-50/80 hover:border-emerald-200 hover:bg-emerald-50/40'
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900">{session.title}</p>
+                                  <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                                    <CalendarDays size={15} />
+                                    {formatDateOnly(session.startsAt)}
+                                  </p>
+                                </div>
+                                <AdminTag tone={session.status === 'completed' ? 'emerald' : session.status === 'cancelled' ? 'rose' : 'blue'}>
+                                  {SCHEDULE_STATUS_OPTIONS.find((option) => option.value === session.status)?.label || session.status}
+                                </AdminTag>
+                              </div>
+                              <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                                <span className="flex items-center gap-1.5">
+                                  <Clock size={14} />
+                                  {formatTimeOnly(session.startsAt)} - {formatTimeOnly(session.endsAt)}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <MapPin size={14} />
+                                  {session.location || 'Lokasi belum diisi'}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <AdminTag tone="emerald">{summary.present || 0} hadir</AdminTag>
+                                <AdminTag tone="amber">{summary.late || 0} terlambat</AdminTag>
+                                <AdminTag tone="rose">{summary.absent || 0} alpa</AdminTag>
+                              </div>
+                            </button>
+                          );
+                        })}
+
+                        {!scheduleSessions.length ? (
+                          <AdminNotice
+                            tone="slate"
+                            title="Belum ada sesi"
+                            description="Tambahkan sesi pertama untuk membuka panel absensi roster course ini."
+                          />
+                        ) : null}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-white">
+                      <CardHeader className="border-b">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <CardTitle>{selectedSchedule?.title || 'Attendance panel'}</CardTitle>
+                            <CardDescription>
+                              {selectedSchedule
+                                ? `${formatDate(selectedSchedule.startsAt)} - roster siswa aktif untuk sesi ini.`
+                                : 'Pilih sesi untuk mengelola attendance.'}
+                            </CardDescription>
+                          </div>
+                          {selectedSchedule ? (
+                            <div className="flex flex-wrap gap-2">
+                              <Button variant="outline" onClick={() => openEditSchedule(selectedSchedule)}>
+                                <Edit3 data-icon="inline-start" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                                onClick={() => deleteScheduleSession(selectedSchedule.id)}
+                                disabled={deleteScheduleMutation.isPending}
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                Hapus
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4 pt-4">
+                        {selectedSchedule ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                              <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-slate-400">Roster</p>
+                                <p className="mt-1 text-xl font-semibold text-slate-900">{attendanceSummary.total || attendanceRoster.length}</p>
+                              </div>
+                              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-emerald-600/70">Hadir</p>
+                                <p className="mt-1 text-xl font-semibold text-slate-900">{attendanceSummary.present || 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-amber-600/70">Telat</p>
+                                <p className="mt-1 text-xl font-semibold text-slate-900">{attendanceSummary.late || 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-blue-600/70">Izin</p>
+                                <p className="mt-1 text-xl font-semibold text-slate-900">{attendanceSummary.excused || 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-rose-100 bg-rose-50/70 px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-rose-600/70">Alpa</p>
+                                <p className="mt-1 text-xl font-semibold text-slate-900">{attendanceSummary.absent || 0}</p>
+                              </div>
+                            </div>
+
+                            {attendanceQuery.isPending ? (
+                              <AdminLoadingState
+                                title="Memuat attendance..."
+                                description="Roster sesi sedang disiapkan dari API."
+                              />
+                            ) : (
+                              <div className="overflow-hidden rounded-[24px] border border-slate-100">
+                                <Table>
+                                  <TableHeader className="bg-slate-50/90">
+                                    <TableRow>
+                                      <TableHead>Siswa</TableHead>
+                                      <TableHead>Status</TableHead>
+                                      <TableHead>Catatan</TableHead>
+                                      <TableHead className="text-right">Update</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {attendanceRoster.map((entry) => {
+                                      const attendanceOption = getAttendanceOption(entry.status);
+
+                                      return (
+                                        <TableRow key={entry.id}>
+                                          <TableCell>
+                                            <div>
+                                              <p className="font-semibold text-slate-800">{entry.student.name}</p>
+                                              <p className="mt-1 text-xs text-slate-500">{entry.student.nis || '-'} • {entry.student.email || '-'}</p>
+                                            </div>
+                                          </TableCell>
+                                          <TableCell>
+                                            <AdminTag tone={attendanceOption.tone}>{attendanceOption.label}</AdminTag>
+                                          </TableCell>
+                                          <TableCell className="text-sm text-slate-500">{entry.note || '-'}</TableCell>
+                                          <TableCell className="text-right">
+                                            <select
+                                              value={entry.status}
+                                              onChange={(event) => updateAttendanceStatus(entry, event.target.value)}
+                                              disabled={updateAttendanceMutation.isPending}
+                                              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                                            >
+                                              {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                              ))}
+                                            </select>
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+
+                                    {!attendanceRoster.length ? (
+                                      <TableRow>
+                                        <TableCell colSpan={4} className="px-5 py-10 text-center text-sm text-slate-500">
+                                          Roster absensi belum tersedia untuk sesi ini.
+                                        </TableCell>
+                                      </TableRow>
+                                    ) : null}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <AdminNotice
+                            tone="slate"
+                            title="Pilih atau buat sesi"
+                            description="Attendance panel akan muncul setelah ada sesi schedule pada course aktif."
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </TabsContent>
+
               <TabsContent value="people" className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -661,6 +1077,94 @@ export default function AdminClassroom() {
           </AdminSectionCard>
         </div>
       </div>
+
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingScheduleId ? 'Edit sesi schedule' : 'Tambah sesi schedule'}</DialogTitle>
+            <DialogDescription>Jadwal tersimpan melalui API admin dan akan membuka roster attendance per sesi.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-title">Judul sesi</label>
+              <Input
+                id="schedule-title"
+                value={scheduleDraft.title}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Contoh: Pertemuan 1 - Pengenalan komputer"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-status">Status</label>
+              <select
+                id="schedule-status"
+                value={scheduleDraft.status}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, status: event.target.value }))}
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                {SCHEDULE_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-start">Mulai</label>
+              <Input
+                id="schedule-start"
+                type="datetime-local"
+                value={scheduleDraft.startsAt}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, startsAt: event.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-end">Selesai</label>
+              <Input
+                id="schedule-end"
+                type="datetime-local"
+                value={scheduleDraft.endsAt}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, endsAt: event.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-location">Lokasi</label>
+              <Input
+                id="schedule-location"
+                value={scheduleDraft.location}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, location: event.target.value }))}
+                placeholder="Lab komputer / Google Meet"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-instructor">Instruktur</label>
+              <Input
+                id="schedule-instructor"
+                value={scheduleDraft.instructorName}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, instructorName: event.target.value }))}
+                placeholder="Nama instruktur"
+              />
+            </div>
+            <div className="md:col-span-2 flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="schedule-notes">Catatan</label>
+              <Textarea
+                id="schedule-notes"
+                value={scheduleDraft.notes}
+                onChange={(event) => setScheduleDraft((current) => ({ ...current, notes: event.target.value }))}
+                className="min-h-28"
+                placeholder="Catatan materi, persiapan, atau link meeting."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>Batal</Button>
+            <Button
+              onClick={saveScheduleSession}
+              disabled={!scheduleDraft.title.trim() || !scheduleDraft.startsAt || !scheduleDraft.endsAt || isSavingSchedule}
+            >
+              {isSavingSchedule ? 'Menyimpan...' : 'Simpan sesi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
         <DialogContent className="max-w-2xl">

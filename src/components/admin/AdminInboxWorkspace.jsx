@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, Search, Send, Zap } from 'lucide-react';
+import { Clock, FileText, Paperclip, Search, Send, X, Zap } from 'lucide-react';
 import {
   MESSAGE_SORT,
   countThreadsByStatus,
@@ -10,7 +10,6 @@ import {
   sortThreads,
 } from '../messaging/threadUtils';
 import {
-  AdminConfirmDialog,
   AdminEmptyState,
   AdminLoadingState,
   AdminNotice,
@@ -20,6 +19,22 @@ import {
   AdminTag,
   AdminToast,
 } from './AdminUi';
+
+const MAX_ATTACHMENT_SIZE = 2.5 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  'pdf',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'txt',
+]);
 
 function formatThreadDate(value) {
   if (!value) return '-';
@@ -114,7 +129,140 @@ function normalizeMessage(message, fallbackDate, index) {
       || (adminMessage ? 'Admin LKP' : 'Pengirim')
     ),
     isAdmin: adminMessage,
+    attachments: normalizeMessageAttachments(message),
   };
+}
+
+function formatFileSize(sizeBytes = 0) {
+  const bytes = Number(sizeBytes || 0);
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${Math.max(1, bytes)} B`;
+}
+
+function normalizeAttachmentItem(attachment, fallbackId) {
+  if (!attachment) return null;
+
+  const name = String(
+    attachment?.name
+    || attachment?.fileName
+    || attachment?.title
+    || ''
+  ).trim();
+  const url = String(
+    attachment?.url
+    || attachment?.fileUrl
+    || attachment?.href
+    || ''
+  ).trim();
+  const mimeType = String(
+    attachment?.mimeType
+    || attachment?.type
+    || ''
+  ).trim();
+  const sizeLabel = String(
+    attachment?.sizeLabel
+    || attachment?.fileSizeLabel
+    || ''
+  ).trim();
+  const sizeBytes = Number(attachment?.sizeBytes ?? attachment?.fileSize ?? 0);
+
+  if (!name && !url) {
+    return null;
+  }
+
+  return {
+    id: String(attachment?.id || fallbackId),
+    name: name || 'Lampiran',
+    url,
+    mimeType,
+    sizeLabel,
+    sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+  };
+}
+
+function normalizeMessageAttachments(message) {
+  const directAttachments = Array.isArray(message?.attachments)
+    ? message.attachments
+      .map((attachment, index) => normalizeAttachmentItem(attachment, `attachment-${index + 1}`))
+      .filter(Boolean)
+    : [];
+
+  if (directAttachments.length > 0) {
+    return directAttachments;
+  }
+
+  const fallbackAttachment = normalizeAttachmentItem({
+    id: message?.attachmentId || message?.fileName || message?.fileUrl,
+    name: message?.fileName,
+    url: message?.fileUrl,
+    mimeType: message?.mimeType,
+    fileSize: message?.fileSize,
+    fileSizeLabel: message?.fileSizeLabel,
+  }, 'attachment-1');
+
+  return fallbackAttachment ? [fallbackAttachment] : [];
+}
+
+function buildAttachmentDraft(file) {
+  return {
+    file,
+    id: `${Date.now()}-${file.name}`,
+    name: file.name || 'Lampiran',
+    mimeType: file.type || '',
+    sizeBytes: Number(file.size || 0),
+    sizeLabel: formatFileSize(file.size || 0),
+  };
+}
+
+function AttachmentCard({ attachment, tone = 'slate', onRemove }) {
+  const toneClassName = tone === 'emerald'
+    ? 'border-emerald-200/80 bg-emerald-50/80 text-emerald-900'
+    : 'border-slate-200 bg-white text-slate-700';
+
+  return (
+    <div className={`flex items-center gap-3 rounded-2xl border px-3 py-2 shadow-sm ${toneClassName}`}>
+      <div className={`flex size-10 shrink-0 items-center justify-center rounded-2xl ${tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+        <FileText size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{attachment.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+          {attachment.sizeLabel ? (
+            <span className={tone === 'emerald' ? 'text-emerald-700/80' : 'text-slate-500'}>{attachment.sizeLabel}</span>
+          ) : null}
+          {attachment.mimeType ? (
+            <span className={tone === 'emerald' ? 'text-emerald-700/80' : 'text-slate-500'}>{attachment.mimeType}</span>
+          ) : null}
+        </div>
+      </div>
+      {attachment.url ? (
+        <a
+          href={attachment.url}
+          download={attachment.name}
+          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${tone === 'emerald' ? 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100/60' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:text-emerald-700'}`}
+        >
+          Unduh
+        </a>
+      ) : null}
+      {onRemove ? (
+        <button
+          type="button"
+          aria-label={`Hapus lampiran ${attachment.name}`}
+          className={`shrink-0 rounded-full border p-2 transition-colors ${tone === 'emerald' ? 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100/60' : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600'}`}
+          onClick={onRemove}
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function buildLegacyMessages(thread) {
@@ -134,6 +282,7 @@ function buildLegacyMessages(thread) {
       ...response,
       role: response.role || 'admin',
     }, createdAt, index))
+      .filter((message) => message.body.trim() || message.attachments.length > 0)
     : [];
 
   return [...incoming, ...responses].sort(
@@ -145,7 +294,7 @@ function normalizeThread(thread) {
   const normalizedMessages = Array.isArray(thread.messages) && thread.messages.length > 0
     ? thread.messages
       .map((message, index) => normalizeMessage(message, thread.createdAt || thread.updatedAt, index))
-      .filter((message) => message.body.trim())
+      .filter((message) => message.body.trim() || message.attachments.length > 0)
       .sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt))
     : buildLegacyMessages(thread);
 
@@ -211,17 +360,6 @@ function normalizeThread(thread) {
   };
 }
 
-function updateThreadById(threadList, threadId, updater) {
-  return threadList.map((thread) => {
-    const normalized = normalizeThread(thread);
-    if (normalized.id !== threadId) {
-      return thread;
-    }
-
-    return updater(thread, normalized);
-  });
-}
-
 export default function AdminInboxWorkspace({
   title,
   icon: Icon,
@@ -231,10 +369,14 @@ export default function AdminInboxWorkspace({
   emptyDescription,
   quickReplies,
   threads,
-  setThreads,
   isReady,
   error,
   retryAction,
+  onReply,
+  isReplyPending = false,
+  onStatusChange,
+  isStatusPending = false,
+  allowDelete = false,
   resolveMetaLine,
   resolveSummaryLine,
 }) {
@@ -246,10 +388,12 @@ export default function AdminInboxWorkspace({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortMode, setSortMode] = useState(MESSAGE_SORT.NEWEST);
-  const [draftState, setDraftState] = useState({ threadId: null, text: '' });
+  const [draftsByThread, setDraftsByThread] = useState({});
+  const [attachmentsByThread, setAttachmentsByThread] = useState({});
+  const [composerError, setComposerError] = useState('');
   const [toast, setToast] = useState({ title: '', description: '', tone: 'emerald' });
-  const [confirmState, setConfirmState] = useState({ open: false, id: null });
   const messageListRef = useRef(null);
+  const attachmentInputRef = useRef(null);
   const resolvedActiveThreadId = normalizedThreads.some((thread) => thread.id === activeThreadId)
     ? activeThreadId
     : (normalizedThreads[0]?.id || null);
@@ -262,9 +406,10 @@ export default function AdminInboxWorkspace({
   const activeThread = filteredThreads.find((thread) => thread.id === resolvedActiveThreadId)
     || filteredThreads[0]
     || null;
-  const response = draftState.threadId === activeThread?.id
-    ? draftState.text
-    : (activeThread?.draft || '');
+  const response = activeThread
+    ? (draftsByThread[activeThread.id] ?? activeThread.draft ?? '')
+    : '';
+  const activeAttachment = activeThread ? (attachmentsByThread[activeThread.id] || null) : null;
   const counts = countThreadsByStatus(normalizedThreads);
   const isFiltered = search.trim() || statusFilter !== 'all';
   const activeStatusMeta = activeThread ? getMessageStatusMeta(activeThread, 'admin') : null;
@@ -282,59 +427,11 @@ export default function AdminInboxWorkspace({
   const handleDraftUpdate = (nextDraft) => {
     if (!activeThread) return;
 
-    setDraftState({ threadId: activeThread.id, text: nextDraft });
-    setThreads((current) => updateThreadById(current, activeThread.id, (thread) => ({
-      ...thread,
-      draft: nextDraft,
-      composerDraft: nextDraft,
-      updatedAt: new Date().toISOString(),
-    })));
-  };
-
-  const handleReply = () => {
-    if (!activeThread || !response.trim()) return;
-
-    const createdAt = new Date().toISOString();
-    const nextResponse = {
-      id: `${Date.now()}`,
-      body: response.trim(),
-      createdAt,
-      authorName: 'Admin LKP',
-      role: 'admin',
-      direction: 'outbound',
-    };
-
-    setThreads((current) => updateThreadById(current, activeThread.id, (thread) => {
-      if (Array.isArray(thread.messages)) {
-        return {
-          ...thread,
-          status: 'replied',
-          draft: '',
-          composerDraft: '',
-          updatedAt: createdAt,
-          lastMessageAt: createdAt,
-          lastMessagePreview: nextResponse.body,
-          unreadCount: 0,
-          messages: [...thread.messages, nextResponse],
-        };
-      }
-
-      return {
-        ...thread,
-        status: 'replied',
-        draft: '',
-        composerDraft: '',
-        updatedAt: createdAt,
-        responses: [...(thread.responses || []), nextResponse],
-      };
+    setComposerError('');
+    setDraftsByThread((current) => ({
+      ...current,
+      [activeThread.id]: nextDraft,
     }));
-
-    setDraftState({ threadId: activeThread.id, text: '' });
-    setToast({
-      tone: 'emerald',
-      title: 'Balasan terkirim',
-      description: 'Thread telah diperbarui dan status pesan berubah menjadi sudah dibalas.',
-    });
   };
 
   const handleQuickReply = (reply) => {
@@ -342,31 +439,113 @@ export default function AdminInboxWorkspace({
     handleDraftUpdate(nextDraft);
   };
 
-  const markAsUnread = (threadId) => {
-    setThreads((current) => updateThreadById(current, threadId, (thread) => ({
-      ...thread,
-      status: 'unread',
-      updatedAt: new Date().toISOString(),
-      unreadCount: thread.unreadCount ?? 1,
-    })));
+  const handleAttachmentSelection = (event) => {
+    if (!activeThread) return;
 
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    const extension = String(file.name.split('.').pop() || '').toLowerCase();
+    if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      setComposerError('Format file belum didukung. Gunakan PDF, gambar, Office, atau TXT.');
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setComposerError('Ukuran lampiran maksimal 2.5 MB agar inbox admin tetap ringan.');
+      return;
+    }
+
+    setComposerError('');
+    setAttachmentsByThread((current) => ({
+      ...current,
+      [activeThread.id]: buildAttachmentDraft(file),
+    }));
     setToast({
       tone: 'blue',
-      title: 'Status diperbarui',
-      description: 'Thread ditandai kembali sebagai perlu tindak lanjut.',
+      title: 'Lampiran siap dikirim',
+      description: `${file.name} akan ikut terkirim bersama balasan admin.`,
     });
   };
 
-  const handleDelete = () => {
-    if (!confirmState.id) return;
+  const handleRemoveAttachment = () => {
+    if (!activeThread) return;
 
-    setThreads((current) => current.filter((thread) => normalizeThread(thread).id !== confirmState.id));
-    setConfirmState({ open: false, id: null });
-    setToast({
-      tone: 'rose',
-      title: 'Thread dihapus',
-      description: 'Percakapan telah dihapus dari inbox pada sesi ini.',
+    setAttachmentsByThread((current) => {
+      const next = { ...current };
+      delete next[activeThread.id];
+      return next;
     });
+    setComposerError('');
+  };
+
+  const handleReply = async () => {
+    if (!activeThread || typeof onReply !== 'function') return;
+
+    const trimmedResponse = response.trim();
+    if (!trimmedResponse && !activeAttachment) {
+      setComposerError('Tulis balasan atau pilih satu lampiran sebelum mengirim.');
+      return;
+    }
+
+    setComposerError('');
+
+    try {
+      await onReply({
+        threadId: activeThread.id,
+        body: trimmedResponse,
+        attachment: activeAttachment?.file || null,
+      });
+
+      setDraftsByThread((current) => {
+        const next = { ...current };
+        delete next[activeThread.id];
+        return next;
+      });
+      setAttachmentsByThread((current) => {
+        const next = { ...current };
+        delete next[activeThread.id];
+        return next;
+      });
+      setToast({
+        tone: 'emerald',
+        title: 'Balasan terkirim',
+        description: 'Thread telah diperbarui dan status pesan berubah menjadi sudah dibalas.',
+      });
+    } catch (replyError) {
+      setComposerError(replyError?.message || 'Balasan gagal dikirim. Coba lagi.');
+      setToast({
+        tone: 'rose',
+        title: 'Balasan gagal',
+        description: replyError?.message || 'Terjadi masalah saat mengirim balasan admin.',
+      });
+    }
+  };
+
+  const handleMarkAsUnread = async (threadId) => {
+    if (!threadId || typeof onStatusChange !== 'function') return;
+
+    try {
+      await onStatusChange({
+        threadId,
+        status: 'unread',
+      });
+      setToast({
+        tone: 'blue',
+        title: 'Status diperbarui',
+        description: 'Thread ditandai kembali sebagai perlu tindak lanjut.',
+      });
+    } catch (statusError) {
+      setToast({
+        tone: 'rose',
+        title: 'Status gagal diperbarui',
+        description: statusError?.message || 'Perubahan status belum berhasil disimpan.',
+      });
+    }
   };
 
   if (!isReady) {
@@ -528,16 +707,18 @@ export default function AdminInboxWorkspace({
                     {activeStatusMeta.label}
                   </AdminTag>
                   {getThreadStatus(activeThread) === 'replied' ? (
-                    <AdminSecondaryButton onClick={() => markAsUnread(activeThread.id)}>
+                    <AdminSecondaryButton disabled={isStatusPending || isReplyPending} onClick={() => handleMarkAsUnread(activeThread.id)}>
                       Tandai perlu balas
                     </AdminSecondaryButton>
                   ) : null}
-                  <AdminSecondaryButton
-                    className="text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                    onClick={() => setConfirmState({ open: true, id: activeThread.id })}
-                  >
-                    Hapus
-                  </AdminSecondaryButton>
+                  {allowDelete ? (
+                    <AdminSecondaryButton
+                      className="text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                      disabled
+                    >
+                      Hapus
+                    </AdminSecondaryButton>
+                  ) : null}
                 </div>
               </div>
 
@@ -562,54 +743,112 @@ export default function AdminInboxWorkspace({
                       )}
                     </div>
                     <div className={`max-w-[85%] break-words rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm ${message.isAdmin ? 'rounded-tr-sm bg-emerald-600 text-white' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-700'}`}>
-                      {message.body}
+                      {message.body || 'Lampiran tanpa teks'}
                     </div>
+                    {message.attachments?.length ? (
+                      <div className={`mt-2 w-full max-w-[85%] ${message.isAdmin ? 'flex justify-end' : 'flex justify-start'}`}>
+                        <div className="w-full max-w-md">
+                          {message.attachments.map((attachment) => (
+                            <AttachmentCard
+                              key={attachment.id}
+                              attachment={attachment}
+                              tone={message.isAdmin ? 'emerald' : 'slate'}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <span className="mt-2 text-xs text-slate-400">{formatThreadDate(message.createdAt)}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="border-t border-slate-100 bg-white p-5">
+              <div className="border-t border-slate-100 bg-white p-5" aria-busy={isReplyPending}>
                 <div className="flex items-center gap-2 overflow-x-auto pb-3">
                   <span className="flex items-center whitespace-nowrap text-xs font-medium text-slate-400">
                     <Zap size={14} className="mr-1 text-amber-500" />
                     Quick Reply:
                   </span>
-                    {quickReplies.map((reply) => (
-                      <button
-                        key={reply}
-                        type="button"
-                        className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50"
-                        onClick={() => handleQuickReply(reply)}
-                      >
-                        {reply}
+                  {quickReplies.map((reply) => (
+                    <button
+                      key={reply}
+                      type="button"
+                      disabled={isReplyPending}
+                      className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => handleQuickReply(reply)}
+                    >
+                      {reply}
                     </button>
                   ))}
                 </div>
 
+                {activeAttachment ? (
+                  <div className="pb-3" aria-live="polite">
+                    <AttachmentCard
+                      attachment={activeAttachment}
+                      onRemove={isReplyPending ? undefined : handleRemoveAttachment}
+                    />
+                  </div>
+                ) : null}
+
+                {composerError ? (
+                  <div className="pb-3" aria-live="polite">
+                    <AdminNotice
+                      tone="rose"
+                      title="Composer belum siap"
+                      description={composerError}
+                    />
+                  </div>
+                ) : null}
+
                 <div className="mt-1 flex min-w-0 items-end gap-3">
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    onChange={handleAttachmentSelection}
+                  />
                   <textarea
                     className="min-h-[92px] min-w-0 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
                     placeholder={`Tulis balasan untuk ${activeThread.senderName}...`}
                     value={response}
+                    disabled={isReplyPending}
                     onChange={(event) => handleDraftUpdate(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
+                      if (event.key === 'Enter' && !event.shiftKey && !isReplyPending) {
                         event.preventDefault();
                         handleReply();
                       }
                     }}
                   />
-                  <AdminPrimaryButton
-                    className="h-[92px] w-[92px] shrink-0 rounded-[24px] px-0"
-                    disabled={!response.trim()}
-                    aria-label="Kirim balasan"
-                    title="Kirim balasan"
-                    onClick={handleReply}
-                  >
-                    <Send size={18} />
-                  </AdminPrimaryButton>
+                  <div className="flex shrink-0 flex-col gap-2 self-stretch">
+                    <AdminSecondaryButton
+                      className="h-11 rounded-[20px] px-4"
+                      disabled={isReplyPending}
+                      aria-label="Lampirkan file balasan"
+                      onClick={() => attachmentInputRef.current?.click()}
+                    >
+                      <Paperclip size={16} className="mr-2" />
+                      Lampiran
+                    </AdminSecondaryButton>
+                    <AdminPrimaryButton
+                      className="h-[76px] min-w-[108px] shrink-0 rounded-[24px] px-4"
+                      disabled={isReplyPending || (!response.trim() && !activeAttachment)}
+                      aria-label="Kirim balasan"
+                      title="Kirim balasan"
+                      onClick={handleReply}
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        <Send size={18} />
+                        <span className="text-xs font-semibold">{isReplyPending ? 'Mengirim...' : 'Kirim'}</span>
+                      </span>
+                    </AdminPrimaryButton>
+                  </div>
                 </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  Tekan Enter untuk kirim, Shift+Enter untuk baris baru.
+                </p>
               </div>
             </>
           ) : (
@@ -629,15 +868,6 @@ export default function AdminInboxWorkspace({
         title={toast.title}
         description={toast.description}
         onClose={() => setToast({ title: '', description: '', tone: 'emerald' })}
-      />
-
-      <AdminConfirmDialog
-        open={confirmState.open}
-        title="Hapus thread pesan"
-        description="Percakapan ini akan dihapus dari inbox pada sesi ini. Pastikan Anda memang tidak lagi membutuhkannya."
-        confirmLabel="Hapus thread"
-        onCancel={() => setConfirmState({ open: false, id: null })}
-        onConfirm={handleDelete}
       />
     </div>
   );

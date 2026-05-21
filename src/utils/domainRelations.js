@@ -410,18 +410,70 @@ export function buildModuleDownloadFallback(courseTitle, moduleTitle, summary = 
 }
 
 export function normalizeThreadMessages(thread) {
+  const normalizeAttachments = (source = {}, fallbackIdPrefix = 'attachment') => {
+    const directAttachments = Array.isArray(source?.attachments)
+      ? source.attachments
+        .filter(Boolean)
+        .map((attachment, index) => {
+          const name = String(attachment?.name || attachment?.fileName || '').trim();
+          const url = String(attachment?.url || attachment?.fileUrl || '').trim();
+          if (!name && !url) return null;
+
+          return {
+            id: String(attachment?.id || `${fallbackIdPrefix}-${index + 1}`),
+            name: name || 'Lampiran',
+            url,
+            mimeType: String(attachment?.mimeType || attachment?.type || '').trim(),
+            sizeBytes: Number(attachment?.sizeBytes ?? attachment?.fileSize ?? 0) || 0,
+            sizeLabel: String(attachment?.sizeLabel || attachment?.fileSizeLabel || '').trim(),
+          };
+        })
+        .filter(Boolean)
+      : [];
+
+    if (directAttachments.length > 0) {
+      return directAttachments;
+    }
+
+    const fallbackName = String(source?.fileName || '').trim();
+    const fallbackUrl = String(source?.fileUrl || '').trim();
+    if (!fallbackName && !fallbackUrl) {
+      return [];
+    }
+
+    return [{
+      id: String(source?.attachmentId || source?.id || `${fallbackIdPrefix}-1`),
+      name: fallbackName || 'Lampiran',
+      url: fallbackUrl,
+      mimeType: String(source?.mimeType || '').trim(),
+      sizeBytes: Number(source?.fileSize || 0) || 0,
+      sizeLabel: String(source?.fileSizeLabel || '').trim(),
+    }];
+  };
+
   const fallbackCreatedAt = toIsoDate(thread?.createdAt || thread?.date || thread?.updatedAt);
   const existingMessages = Array.isArray(thread?.messages)
     ? thread.messages
       .filter(Boolean)
-      .map((message, index) => ({
-        id: String(message.id || `${thread?.id || 'thread'}-message-${index + 1}`),
-        authorRole: String(message.authorRole || message.role || (index === 0 ? 'student' : 'admin')).toLowerCase(),
-        authorName: message.authorName || message.senderName || (index === 0 ? thread?.senderName || thread?.studentName || 'Siswa' : 'Admin LKP'),
-        body: String(message.body || message.message || ''),
-        createdAt: toIsoDate(message.createdAt || message.date || fallbackCreatedAt),
-      }))
-      .filter((message) => message.body)
+      .map((message, index) => {
+        const attachments = normalizeAttachments(message, `${thread?.id || 'thread'}-message-${index + 1}-attachment`);
+        const firstAttachment = attachments[0] || null;
+
+        return {
+          id: String(message.id || `${thread?.id || 'thread'}-message-${index + 1}`),
+          authorRole: String(message.authorRole || message.role || (index === 0 ? 'student' : 'admin')).toLowerCase(),
+          authorName: message.authorName || message.senderName || (index === 0 ? thread?.senderName || thread?.studentName || 'Siswa' : 'Admin LKP'),
+          body: String(message.body || message.message || ''),
+          createdAt: toIsoDate(message.createdAt || message.date || fallbackCreatedAt),
+          attachments,
+          fileName: firstAttachment?.name || '',
+          fileUrl: firstAttachment?.url || '',
+          mimeType: firstAttachment?.mimeType || String(message?.mimeType || ''),
+          fileSize: firstAttachment?.sizeBytes || Number(message?.fileSize || 0) || 0,
+          fileSizeLabel: firstAttachment?.sizeLabel || String(message?.fileSizeLabel || ''),
+        };
+      })
+      .filter((message) => message.body || message.attachments.length > 0)
     : [];
 
   const synthesizedMessages = [];
@@ -449,14 +501,23 @@ export function normalizeThreadMessages(thread) {
       : [];
 
   responses
-    .filter((response) => response?.body || response?.message)
+    .filter((response) => response?.body || response?.message || response?.fileUrl || response?.attachments?.length)
     .forEach((response, index) => {
+      const attachments = normalizeAttachments(response, `${thread?.id || 'thread'}-response-${index + 1}-attachment`);
+      const firstAttachment = attachments[0] || null;
+
       synthesizedMessages.push({
         id: String(response.id || `${thread?.id || 'thread'}-message-admin-${index + 1}`),
         authorRole: 'admin',
         authorName: response.authorName || 'Admin LKP',
         body: String(response.body || response.message || ''),
         createdAt: toIsoDate(response.createdAt || response.date || fallbackCreatedAt),
+        attachments,
+        fileName: firstAttachment?.name || '',
+        fileUrl: firstAttachment?.url || '',
+        mimeType: firstAttachment?.mimeType || String(response?.mimeType || ''),
+        fileSize: firstAttachment?.sizeBytes || Number(response?.fileSize || 0) || 0,
+        fileSizeLabel: firstAttachment?.sizeLabel || String(response?.fileSizeLabel || ''),
       });
     });
 
@@ -474,6 +535,12 @@ export function normalizeThreadMessages(thread) {
         body: message.body,
         createdAt: message.createdAt,
         authorName: message.authorName,
+        attachments: message.attachments || [],
+        fileName: message.fileName || '',
+        fileUrl: message.fileUrl || '',
+        mimeType: message.mimeType || '',
+        fileSize: message.fileSize || 0,
+        fileSizeLabel: message.fileSizeLabel || '',
       })),
     lastMessageAt: latestMessage?.createdAt || fallbackCreatedAt,
   };

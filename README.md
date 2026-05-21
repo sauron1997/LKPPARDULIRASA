@@ -5,6 +5,8 @@ React + Vite frontend with a local Node/Express backend and a repo-local Graphif
 ## Core Commands
 
 - `npm run dev` runs the client and server together.
+- Use only one dev entrypoint at a time. Do not run `npm run dev` and `npm run dev:server` together, or the backend will fail with `EADDRINUSE` on port `3001`.
+- If you want separate terminals, use `npm run dev:client` and `npm run dev:server`.
 - `npm run build` builds the frontend bundle.
 - `npm run lint` runs ESLint across the repo.
 

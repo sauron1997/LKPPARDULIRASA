@@ -3,10 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Award,
   BookOpen,
+  CalendarDays,
+  CheckCircle2,
   ClipboardCheck,
+  Clock3,
   Download,
   FileText,
   Lock,
+  MapPin,
   MessageSquare,
   PlayCircle,
   Save,
@@ -29,7 +33,10 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { useSubmitStudentAssessmentMutation } from '../../hooks/student/useStudentMutations';
+import {
+  useStudentScheduleCheckInMutation,
+  useSubmitStudentAssessmentMutation,
+} from '../../hooks/student/useStudentMutations';
 import { useStudentClassroomData } from '../../hooks/student/useStudentClassroomData';
 import {
   createStudentAssessmentAsset,
@@ -40,6 +47,7 @@ import './Dashboard.css';
 
 const CLASSROOM_TABS = [
   { key: 'stream', label: 'Stream' },
+  { key: 'schedule', label: 'Schedule' },
   { key: 'classwork', label: 'Classwork' },
   { key: 'grades', label: 'Grades' },
   { key: 'people', label: 'People' },
@@ -83,6 +91,141 @@ function formatDateLabel(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function formatTimeRange(startValue, endValue) {
+  if (!startValue) return 'Waktu belum ditentukan';
+
+  const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const timeFormatter = new Intl.DateTimeFormat('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const startDate = new Date(startValue);
+  const endDate = endValue ? new Date(endValue) : null;
+  const endLabel = endDate ? ` - ${timeFormatter.format(endDate)}` : '';
+
+  return `${dateFormatter.format(startDate)}, ${timeFormatter.format(startDate)}${endLabel}`;
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getSessionId(session, index) {
+  return String(session?.id || session?.sessionId || session?.scheduleId || `session-${index}`);
+}
+
+function normalizeScheduleSession(session, index) {
+  const attendance = session?.attendance || {};
+
+  return {
+    ...session,
+    id: getSessionId(session, index),
+    title: session?.title || session?.topic || session?.moduleTitle || session?.name || 'Sesi kelas',
+    description: session?.description || session?.notes || session?.summary || '',
+    startsAt: session?.startsAt || session?.startAt || session?.scheduledAt || session?.date || '',
+    endsAt: session?.endsAt || session?.endAt || '',
+    location: session?.location || session?.room || session?.meetingLocation || session?.meetingUrl || '',
+    instructorName: session?.instructorName || session?.teacherName || session?.mentorName || 'Admin LKP',
+    attendanceStatus: session?.attendanceStatus || attendance.status || session?.status || '',
+    checkedInAt: session?.checkedInAt || attendance.checkedInAt || '',
+    checkedIn: Boolean(
+      session?.checkedIn
+      || session?.hasCheckedIn
+      || session?.checkedInAt
+      || attendance.checkedInAt
+      || ['present', 'checked_in', 'hadir'].includes(String(session?.attendanceStatus || attendance.status || '').toLowerCase()),
+    ),
+    canCheckIn: session?.canCheckIn ?? session?.checkInAllowed ?? session?.access?.canCheckIn,
+    checkInOpensAt: session?.checkInOpensAt || session?.checkInWindowStart || session?.windowStart || '',
+    checkInClosesAt: session?.checkInClosesAt || session?.checkInWindowEnd || session?.windowEnd || '',
+    unavailableReason: session?.checkInUnavailableReason || session?.disabledReason || session?.access?.reason || '',
+  };
+}
+
+function splitScheduleSessions(sessions) {
+  const now = Date.now();
+  return sessions.reduce((groups, session, index) => {
+    const normalized = normalizeScheduleSession(session, index);
+    const startsAtTime = normalized.startsAt ? new Date(normalized.startsAt).getTime() : 0;
+    const targetGroup = !startsAtTime || startsAtTime >= now ? 'upcoming' : 'history';
+    groups[targetGroup].push(normalized);
+    return groups;
+  }, { upcoming: [], history: [] });
+}
+
+function normalizeScheduleData(schedulePayload) {
+  if (Array.isArray(schedulePayload)) {
+    const splitSessions = splitScheduleSessions(schedulePayload);
+    return {
+      summary: null,
+      nextSession: splitSessions.upcoming[0] || null,
+      upcoming: splitSessions.upcoming,
+      history: splitSessions.history,
+    };
+  }
+
+  const source = schedulePayload || {};
+  const splitSessions = splitScheduleSessions(asArray(source.sessions));
+  const upcoming = asArray(source.upcoming || source.upcomingSessions || source.nextSessions);
+  const history = asArray(source.history || source.attendanceHistory || source.pastSessions || source.attendances);
+
+  return {
+    summary: source.summary || source.attendanceSummary || source.stats || null,
+    nextSession: source.nextSession || source.next || null,
+    upcoming: (upcoming.length ? upcoming : splitSessions.upcoming).map(normalizeScheduleSession),
+    history: (history.length ? history : splitSessions.history).map(normalizeScheduleSession),
+  };
+}
+
+function resolveCheckInState(session, hasClassroomAccess) {
+  if (!hasClassroomAccess) {
+    return { allowed: false, reason: 'Akses classroom belum aktif.' };
+  }
+
+  if (session.checkedIn) {
+    return { allowed: false, reason: 'Sudah check-in.' };
+  }
+
+  if (typeof session.canCheckIn === 'boolean') {
+    return {
+      allowed: session.canCheckIn,
+      reason: session.canCheckIn
+        ? 'Check-in tersedia.'
+        : session.unavailableReason || 'Check-in sedang di luar jendela waktu.',
+    };
+  }
+
+  if (!session.startsAt) {
+    return { allowed: false, reason: 'Jadwal belum memiliki waktu check-in.' };
+  }
+
+  const now = Date.now();
+  const startsAt = new Date(session.startsAt).getTime();
+  const defaultOpenAt = startsAt - (15 * 60 * 1000);
+  const defaultCloseAt = startsAt + (2 * 60 * 60 * 1000);
+  const opensAt = session.checkInOpensAt ? new Date(session.checkInOpensAt).getTime() : defaultOpenAt;
+  const closesAt = session.checkInClosesAt
+    ? new Date(session.checkInClosesAt).getTime()
+    : session.endsAt
+      ? new Date(session.endsAt).getTime()
+      : defaultCloseAt;
+
+  if (now < opensAt) {
+    return { allowed: false, reason: 'Check-in belum dibuka.' };
+  }
+
+  if (now > closesAt) {
+    return { allowed: false, reason: 'Jendela check-in sudah ditutup.' };
+  }
+
+  return { allowed: true, reason: 'Check-in tersedia.' };
 }
 
 function formatBytes(value) {
@@ -358,6 +501,175 @@ function StreamTab({ streamItems, nextTask }) {
                 </Link>
               </Button>
             ) : null}
+          </CardContent>
+        </Card>
+      </aside>
+    </div>
+  );
+}
+
+function ScheduleTab({
+  scheduleData,
+  isLoading,
+  error,
+  hasClassroomAccess,
+  checkingSessionId,
+  feedback,
+  onCheckIn,
+}) {
+  const normalizedSchedule = useMemo(() => normalizeScheduleData(scheduleData), [scheduleData]);
+  const nextSession = normalizeScheduleSession(
+    normalizedSchedule.nextSession || normalizedSchedule.upcoming[0] || null,
+    0,
+  );
+  const summary = normalizedSchedule.summary || {};
+  const attendedCount = summary.attendedCount ?? summary.presentCount ?? summary.checkedInCount ?? 0;
+  const totalCount = summary.totalCount ?? summary.sessionCount ?? normalizedSchedule.history.length;
+  const attendanceRate = summary.attendanceRate ?? summary.rate ?? (
+    totalCount > 0 ? Math.round((attendedCount / totalCount) * 100) : null
+  );
+
+  if (isLoading) {
+    return (
+      <div className="dash-state-card">
+        <h2>Menyiapkan jadwal kelas...</h2>
+        <p>Agenda dan riwayat absensi sedang dimuat dari server.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="student-classroom-grid">
+      <div className="student-classroom-main">
+        {error ? (
+          <Alert variant="destructive" className="mb-4 border-red-200/70 bg-red-50">
+            <Lock />
+            <AlertTitle>Jadwal belum bisa dimuat</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {feedback?.message ? (
+          <Alert
+            variant={feedback.tone === 'danger' ? 'destructive' : 'default'}
+            className={feedback.tone === 'success' ? 'mb-4 border-emerald-200/80 bg-emerald-50 text-emerald-900' : 'mb-4 border-slate-200/80 bg-white'}
+          >
+            <ClipboardCheck />
+            <AlertTitle>Update absensi</AlertTitle>
+            <AlertDescription>{feedback.message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <Card className="border-slate-200/80 bg-white shadow-[0_20px_48px_-38px_rgba(15,23,42,0.38)]">
+          <CardHeader>
+            <Badge variant="outline" className="w-fit">Schedule</Badge>
+            <CardTitle>Jadwal mendatang</CardTitle>
+            <CardDescription>Check-in hanya aktif saat akses classroom dan jendela absensi sesi memenuhi syarat.</CardDescription>
+          </CardHeader>
+          <CardContent className="student-stream-list">
+            {normalizedSchedule.upcoming.length ? normalizedSchedule.upcoming.map((session) => {
+              const checkInState = resolveCheckInState(session, hasClassroomAccess);
+              const isCheckingThisSession = checkingSessionId === session.id;
+
+              return (
+                <article key={session.id} className="student-stream-card">
+                  <div className="student-stream-head">
+                    <div>
+                      <p className="student-stream-category">{formatTimeRange(session.startsAt, session.endsAt)}</p>
+                      <h3>{session.title}</h3>
+                    </div>
+                    <Badge variant={session.checkedIn ? 'secondary' : checkInState.allowed ? 'outline' : 'destructive'}>
+                      {session.checkedIn ? 'Hadir' : checkInState.allowed ? 'Buka' : 'Tertutup'}
+                    </Badge>
+                  </div>
+                  <p>{session.description || 'Detail sesi akan mengikuti arahan pengajar/admin classroom.'}</p>
+                  <div className="student-module-meta">
+                    <span><MapPin size={14} /> {session.location || 'Lokasi menyusul'}</span>
+                    <span><Users size={14} /> {session.instructorName}</span>
+                  </div>
+                  <div className="student-module-actions">
+                    <span className="student-stream-meta">{session.checkedInAt ? `Check-in ${formatDateLabel(session.checkedInAt)}` : checkInState.reason}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!checkInState.allowed || isCheckingThisSession}
+                      onClick={() => onCheckIn(session)}
+                    >
+                      <CheckCircle2 data-icon="inline-start" />
+                      {isCheckingThisSession ? 'Menyimpan...' : session.checkedIn ? 'Sudah Check-in' : 'Check-in'}
+                    </Button>
+                  </div>
+                </article>
+              );
+            }) : (
+              <div className="dash-empty small">
+                <CalendarDays size={20} />
+                <p>Belum ada jadwal mendatang untuk enrollment ini.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-5 border-slate-200/80 bg-white shadow-[0_20px_48px_-38px_rgba(15,23,42,0.38)]">
+          <CardHeader>
+            <Badge variant="outline" className="w-fit">History</Badge>
+            <CardTitle>Riwayat kehadiran</CardTitle>
+            <CardDescription>Absensi lama ditampilkan read-only dari data attendance server.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {normalizedSchedule.history.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sesi</TableHead>
+                    <TableHead>Waktu</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Check-in</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {normalizedSchedule.history.map((session) => (
+                    <TableRow key={session.id}>
+                      <TableCell className="font-medium">{session.title}</TableCell>
+                      <TableCell className="whitespace-normal text-slate-600">{formatTimeRange(session.startsAt, session.endsAt)}</TableCell>
+                      <TableCell>
+                        <Badge variant={session.checkedIn ? 'secondary' : 'outline'}>{session.checkedIn ? 'Hadir' : session.attendanceStatus || 'Belum tercatat'}</Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-normal text-slate-600">{session.checkedInAt ? formatDateLabel(session.checkedInAt) : '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="dash-empty small">
+                <Clock3 size={20} />
+                <p>Riwayat kehadiran belum tersedia.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <aside className="student-classroom-side">
+        <Card className="border-slate-200/80 bg-white shadow-[0_20px_48px_-38px_rgba(15,23,42,0.38)]">
+          <CardHeader>
+            <Badge variant="outline" className="w-fit">Next Session</Badge>
+            <CardTitle>{nextSession.title}</CardTitle>
+            <CardDescription>{nextSession.startsAt ? formatTimeRange(nextSession.startsAt, nextSession.endsAt) : 'Belum ada sesi berikutnya.'}</CardDescription>
+          </CardHeader>
+          <CardContent className="student-grade-summary">
+            <div className="student-grade-summary-item">
+              <span>Kehadiran</span>
+              <strong>{attendanceRate == null ? '-' : `${attendanceRate}%`}</strong>
+            </div>
+            <div className="student-grade-summary-item">
+              <span>Sesi hadir</span>
+              <strong>{attendedCount}/{totalCount}</strong>
+            </div>
+            <div className="student-grade-summary-item">
+              <span>Status check-in</span>
+              <strong>{nextSession.checkedIn ? 'Sudah' : resolveCheckInState(nextSession, hasClassroomAccess).allowed ? 'Buka' : 'Tertutup'}</strong>
+            </div>
           </CardContent>
         </Card>
       </aside>
@@ -1277,17 +1589,24 @@ export default function StudentClassroomPage({
 }) {
   const navigate = useNavigate();
   const { tab: routeTab } = useParams();
+  const currentTab = CLASSROOM_TABS.some((item) => item.key === routeTab) ? routeTab : defaultTab;
   const {
     isReady,
     error,
     portal,
     classroomAccess,
+    schedule,
+    isScheduleLoading,
+    scheduleError,
     setAssessmentProgress,
     setAssessmentSubmissions,
-  } = useStudentClassroomData();
+  } = useStudentClassroomData({
+    includeSchedule: currentTab === 'schedule',
+  });
 
-  const currentTab = CLASSROOM_TABS.some((item) => item.key === routeTab) ? routeTab : defaultTab;
   const [activeTab, setActiveTab] = useState(currentTab);
+  const [scheduleFeedback, setScheduleFeedback] = useState({ tone: '', message: '' });
+  const [checkingSessionId, setCheckingSessionId] = useState('');
   const paymentStatus = portal.enrollment?.paymentStatus || portal.student?.paymentStatus || 'pending';
   const activities = useMemo(() => portal.assessmentActivities || [], [portal.assessmentActivities]);
   const activityMap = useMemo(() => Object.fromEntries(activities.map((item) => [item.key, item])), [activities]);
@@ -1303,10 +1622,37 @@ export default function StudentClassroomPage({
     assessmentTimeline,
   }), [assessmentTimeline, nextTask, paymentStatus, portal]);
   const hasClassroomAccess = classroomAccess?.canAccess ?? false;
+  const checkInMutation = useStudentScheduleCheckInMutation();
 
   useEffect(() => {
     setActiveTab(currentTab);
   }, [currentTab]);
+
+  const handleScheduleCheckIn = useCallback(async (session) => {
+    const checkInState = resolveCheckInState(session, hasClassroomAccess);
+    if (!checkInState.allowed) {
+      setScheduleFeedback({ tone: 'danger', message: checkInState.reason });
+      return;
+    }
+
+    setCheckingSessionId(session.id);
+    setScheduleFeedback({ tone: '', message: '' });
+
+    try {
+      await checkInMutation.mutateAsync({
+        sessionId: session.id,
+        checkedInAt: new Date().toISOString(),
+      });
+      setScheduleFeedback({ tone: 'success', message: `Check-in ${session.title} berhasil dicatat.` });
+    } catch (checkInError) {
+      setScheduleFeedback({
+        tone: 'danger',
+        message: checkInError.message || 'Check-in belum berhasil disimpan. Coba lagi saat jendela absensi aktif.',
+      });
+    } finally {
+      setCheckingSessionId('');
+    }
+  }, [checkInMutation, hasClassroomAccess]);
 
   if (!isReady) {
     return (
@@ -1365,7 +1711,7 @@ export default function StudentClassroomPage({
         <div>
           <span className="student-section-eyebrow">Classroom</span>
           <h2>{portal.course.title}</h2>
-          <p className="dash-subtitle">Pusat stream, classwork, nilai, dan anggota kelas untuk program kursus Anda.</p>
+          <p className="dash-subtitle">Pusat stream, jadwal, classwork, nilai, dan anggota kelas untuk program kursus Anda.</p>
         </div>
         <div className="student-section-badges">
           <span className={`student-status-chip ${paymentStatus}`}>{formatPaymentLabel(paymentStatus)}</span>
@@ -1408,6 +1754,18 @@ export default function StudentClassroomPage({
 
         <TabsContent value="stream">
           <StreamTab streamItems={streamItems} nextTask={nextTask} />
+        </TabsContent>
+
+        <TabsContent value="schedule">
+          <ScheduleTab
+            scheduleData={schedule}
+            isLoading={isScheduleLoading}
+            error={scheduleError}
+            hasClassroomAccess={hasClassroomAccess}
+            checkingSessionId={checkingSessionId}
+            feedback={scheduleFeedback}
+            onCheckIn={handleScheduleCheckIn}
+          />
         </TabsContent>
 
         <TabsContent value="classwork">

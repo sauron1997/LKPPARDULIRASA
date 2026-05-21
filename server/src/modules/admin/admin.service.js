@@ -4,6 +4,7 @@ import {
   getDefaultAssessmentDefinitions,
   getDefaultAssessmentProgress,
   getDefaultAssessmentSubmissions,
+  getDefaultAttendanceRecords,
   getDefaultBlogPosts,
   getDefaultCertificates,
   getDefaultCourses,
@@ -12,11 +13,14 @@ import {
   getDefaultModules,
   getDefaultProfile,
   getDefaultPublicMessages,
+  getDefaultScheduleAssignments,
+  getDefaultScheduleSessions,
   getDefaultStudentMessages,
   getDefaultStudents,
 } from '../../../../src/services/admin/defaults.js';
 import {
   ASSESSMENT_TYPE_CONFIG,
+  buildClassroomAccessMeta,
   buildSessionUser,
   buildStudentClassPortal,
   findCourseByReference,
@@ -37,6 +41,9 @@ const COLLECTION_LOADERS = {
   assessmentProgress: getDefaultAssessmentProgress,
   assessmentDefinitions: getDefaultAssessmentDefinitions,
   assessmentSubmissions: getDefaultAssessmentSubmissions,
+  scheduleSessions: getDefaultScheduleSessions,
+  scheduleAssignments: getDefaultScheduleAssignments,
+  attendanceRecords: getDefaultAttendanceRecords,
   certificates: getDefaultCertificates,
   publicMessages: getDefaultPublicMessages,
   studentMessages: getDefaultStudentMessages,
@@ -371,6 +378,9 @@ export function createBackendContext(options = {}) {
       assessmentProgress: repositories.assessmentProgress.raw(),
       assessmentDefinitions: repositories.assessmentDefinitions.raw(),
       assessmentSubmissions: repositories.assessmentSubmissions.raw(),
+      scheduleSessions: repositories.scheduleSessions.raw(),
+      scheduleAssignments: repositories.scheduleAssignments.raw(),
+      attendanceRecords: repositories.attendanceRecords.raw(),
       certificates: repositories.certificates.raw(),
       studentMessages: repositories.studentMessages.raw(),
       publicMessages: repositories.publicMessages.raw(),
@@ -390,11 +400,11 @@ export function createBackendContext(options = {}) {
   }
 
   function getIndexes() {
+    const collections = getCollections();
+
     if (indexCache) {
       return indexCache;
     }
-
-    const collections = getCollections();
 
     indexCache = {
       accountsById: buildSingleIndex(collections.accounts, (item) => item.id),
@@ -415,6 +425,12 @@ export function createBackendContext(options = {}) {
       progressByEnrollmentId: buildGroupedIndex(collections.assessmentProgress, (item) => item.enrollmentId),
       submissionsByStudentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.studentId),
       submissionsByEnrollmentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.enrollmentId),
+      scheduleSessionsByCourseId: buildGroupedIndex(collections.scheduleSessions, (item) => item.courseId),
+      scheduleAssignmentsBySessionId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.sessionId),
+      scheduleAssignmentsByEnrollmentId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.enrollmentId),
+      attendanceBySessionId: buildGroupedIndex(collections.attendanceRecords, (item) => item.sessionId),
+      attendanceByEnrollmentId: buildGroupedIndex(collections.attendanceRecords, (item) => item.enrollmentId),
+      attendanceBySessionEnrollment: buildSingleIndex(collections.attendanceRecords, (item) => `${item.sessionId}:${item.enrollmentId}`),
       threadsByStudentId: buildGroupedIndex(collections.studentMessages, (item) => item.studentId),
       certificatesByStudentId: buildGroupedIndex(collections.certificates, (item) => item.studentId),
       certificatesByEnrollmentId: buildGroupedIndex(collections.certificates, (item) => item.enrollmentId),
@@ -613,6 +629,376 @@ function buildStudentBundle(reference = {}, options = {}) {
   return buildClassBundle(portal);
 }
 
+const LATE_ATTENDANCE_AFTER_MINUTES = 15;
+const VALID_SESSION_STATUSES = new Set(['scheduled', 'planned', 'published', 'completed', 'cancelled']);
+const VALID_ATTENDANCE_STATUSES = new Set(['present', 'late', 'excused', 'absent']);
+
+function parseDateTime(value) {
+  const parsed = new Date(value || 0);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function sortSessionsAsc(left, right) {
+  return (parseDateTime(left.startAt)?.getTime() || 0) - (parseDateTime(right.startAt)?.getTime() || 0);
+}
+
+function isEnrollmentAssignable(enrollment) {
+  return String(enrollment?.status || '').toLowerCase() === 'active'
+    && String(enrollment?.paymentStatus || '').toLowerCase() === 'verified';
+}
+
+function normalizeSessionPayload(payload = {}, courseId, now) {
+  const title = String(payload.title || '').trim();
+  const startAt = parseDateTime(payload.startAt || payload.startsAt || payload.scheduledAt);
+  const endAt = parseDateTime(payload.endAt || payload.endsAt);
+  const status = payload.status || 'scheduled';
+
+  ensure(title, 'Judul jadwal wajib diisi.', 400, 'SCHEDULE_TITLE_REQUIRED');
+  ensure(startAt, 'Waktu mulai jadwal tidak valid.', 400, 'SCHEDULE_START_INVALID');
+  ensure(endAt, 'Waktu selesai jadwal tidak valid.', 400, 'SCHEDULE_END_INVALID');
+  ensure(endAt.getTime() > startAt.getTime(), 'Waktu selesai harus setelah waktu mulai.', 400, 'SCHEDULE_RANGE_INVALID');
+  ensure(VALID_SESSION_STATUSES.has(status), 'Status jadwal tidak valid.', 400, 'SCHEDULE_STATUS_INVALID');
+
+  return {
+    courseId: Number(courseId),
+    moduleId: payload.moduleId || null,
+    title,
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    status,
+    locationLabel: String(payload.locationLabel || payload.location || '').trim(),
+    meetingLink: String(payload.meetingLink || '').trim(),
+    instructorName: String(payload.instructorName || '').trim(),
+    notes: String(payload.notes || '').trim(),
+    updatedAt: now,
+  };
+}
+
+function getSessionAssignments(sessionId, context) {
+  return context.repositories.scheduleAssignments.raw()
+    .filter((item) => String(item.sessionId) === String(sessionId) && item.assignmentStatus !== 'removed');
+}
+
+function getSessionAttendance(sessionId, context) {
+  return context.repositories.attendanceRecords.raw()
+    .filter((item) => String(item.sessionId) === String(sessionId));
+}
+
+function buildAttendanceSummary(records = [], assignments = []) {
+  const counts = { present: 0, late: 0, excused: 0, absent: 0, pending: 0 };
+  const recordedEnrollmentIds = new Set();
+
+  records.forEach((record) => {
+    if (counts[record.status] != null) {
+      counts[record.status] += 1;
+    }
+    recordedEnrollmentIds.add(String(record.enrollmentId));
+  });
+
+  assignments.forEach((assignment) => {
+    if (!recordedEnrollmentIds.has(String(assignment.enrollmentId))) {
+      counts.pending += 1;
+    }
+  });
+
+  const total = assignments.length || records.length;
+  const attended = counts.present + counts.late + counts.excused;
+
+  return {
+    ...counts,
+    total,
+    attended,
+    rate: total ? Math.round((attended / total) * 100) : 0,
+  };
+}
+
+function decorateSession(session, context) {
+  const assignments = getSessionAssignments(session.id, context);
+  const attendance = getSessionAttendance(session.id, context);
+
+  return {
+    ...cloneValue(session),
+    startsAt: session.startAt,
+    endsAt: session.endAt,
+    location: session.locationLabel || '',
+    status: session.status === 'published' || session.status === 'planned' ? 'scheduled' : session.status,
+    assignmentCount: assignments.length,
+    attendanceSummary: buildAttendanceSummary(attendance, assignments),
+  };
+}
+
+function createAssignmentsForSession(session, context) {
+  const now = context.now();
+  const existingKeys = new Set(context.repositories.scheduleAssignments.raw()
+    .map((item) => `${item.sessionId}:${item.enrollmentId}`));
+
+  context.repositories.enrollments.raw()
+    .filter((enrollment) => String(enrollment.courseId) === String(session.courseId) && isEnrollmentAssignable(enrollment))
+    .forEach((enrollment) => {
+      const key = `${session.id}:${enrollment.id}`;
+      if (existingKeys.has(key)) {
+        return;
+      }
+
+      context.repositories.scheduleAssignments.insert({
+        id: `assign-${session.id}-${enrollment.id}`,
+        sessionId: session.id,
+        enrollmentId: enrollment.id,
+        studentId: Number(enrollment.studentId),
+        courseId: Number(enrollment.courseId),
+        status: 'scheduled',
+        assignmentStatus: 'assigned',
+        createdAt: now,
+        updatedAt: now,
+      }, { prepend: false });
+    });
+}
+
+function listCourseSchedules(courseId, context) {
+  const course = context.getIndexes().coursesById.get(toKey(courseId)) || null;
+  ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+
+  const sessions = context.repositories.scheduleSessions.raw()
+    .filter((item) => String(item.courseId) === String(courseId))
+    .map((item) => decorateSession(item, context))
+    .sort(sortSessionsAsc);
+
+  return { sessions };
+}
+
+function createCourseSchedule(courseId, payload = {}, context) {
+  const now = context.now();
+  const course = context.getIndexes().coursesById.get(toKey(courseId)) || null;
+  ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+  const record = {
+    id: payload.id || `session-${courseId}-${Date.now()}`,
+    ...normalizeSessionPayload(payload, courseId, now),
+    createdAt: now,
+  };
+
+  context.repositories.scheduleSessions.insert(record, { prepend: false });
+  const explicitEnrollmentIds = Array.isArray(payload.enrollmentIds)
+    ? payload.enrollmentIds
+    : payload.enrollmentId
+      ? [payload.enrollmentId]
+      : null;
+
+  if (explicitEnrollmentIds) {
+    const existingKeys = new Set(context.repositories.scheduleAssignments.raw()
+      .map((item) => `${item.sessionId}:${item.enrollmentId}`));
+    explicitEnrollmentIds.forEach((enrollmentId) => {
+      const enrollment = context.getIndexes().enrollmentsById.get(toKey(enrollmentId)) || null;
+      ensure(enrollment, 'Enrollment tidak ditemukan.', 404, 'ENROLLMENT_NOT_FOUND');
+      ensure(String(enrollment.courseId) === String(course.id), 'Enrollment tidak sesuai dengan jadwal kursus.', 400, 'ENROLLMENT_COURSE_MISMATCH');
+      const key = `${record.id}:${enrollment.id}`;
+      if (existingKeys.has(key)) return;
+      context.repositories.scheduleAssignments.insert({
+        id: `assign-${record.id}-${enrollment.id}`,
+        sessionId: record.id,
+        enrollmentId: enrollment.id,
+        studentId: Number(enrollment.studentId),
+        courseId: Number(enrollment.courseId),
+        status: 'scheduled',
+        assignmentStatus: 'assigned',
+        createdAt: now,
+        updatedAt: now,
+      }, { prepend: false });
+    });
+  } else {
+    createAssignmentsForSession(record, context);
+  }
+
+  return decorateSession(record, context);
+}
+
+function updateCourseSchedule(courseId, scheduleId, payload = {}, context) {
+  const existing = context.repositories.scheduleSessions.raw().find((item) => (
+    String(item.id) === String(scheduleId) && String(item.courseId) === String(courseId)
+  )) || null;
+  ensure(existing, 'Jadwal tidak ditemukan.', 404, 'SCHEDULE_NOT_FOUND');
+
+  const now = context.now();
+  const nextRecord = {
+    ...existing,
+    ...normalizeSessionPayload({ ...existing, ...payload }, courseId, now),
+    id: existing.id,
+    createdAt: existing.createdAt,
+  };
+
+  context.repositories.scheduleSessions.update(existing.id, () => nextRecord);
+  createAssignmentsForSession(nextRecord, context);
+  return decorateSession(nextRecord, context);
+}
+
+function removeCourseSchedule(courseId, scheduleId, context) {
+  const existing = context.repositories.scheduleSessions.raw().find((item) => (
+    String(item.id) === String(scheduleId) && String(item.courseId) === String(courseId)
+  )) || null;
+  ensure(existing, 'Jadwal tidak ditemukan.', 404, 'SCHEDULE_NOT_FOUND');
+  context.repositories.scheduleSessions.remove(existing.id);
+  context.repositories.scheduleAssignments.replaceAll(context.repositories.scheduleAssignments.raw()
+    .filter((item) => String(item.sessionId) !== String(existing.id)));
+  context.repositories.attendanceRecords.replaceAll(context.repositories.attendanceRecords.raw()
+    .filter((item) => String(item.sessionId) !== String(existing.id)));
+  return { id: existing.id };
+}
+
+function listScheduleAttendance(scheduleId, context) {
+  const indexes = context.getIndexes();
+  const session = context.repositories.scheduleSessions.raw()
+    .find((item) => String(item.id) === String(scheduleId)) || null;
+  ensure(session, 'Jadwal tidak ditemukan.', 404, 'SCHEDULE_NOT_FOUND');
+  const recordsByEnrollment = new Map(getSessionAttendance(scheduleId, context)
+    .map((item) => [toKey(item.enrollmentId), item]));
+
+  const rows = getSessionAssignments(scheduleId, context).map((assignment) => {
+    const student = indexes.studentsById.get(toKey(assignment.studentId)) || null;
+    const enrollment = indexes.enrollmentsById.get(toKey(assignment.enrollmentId)) || null;
+    const record = recordsByEnrollment.get(toKey(assignment.enrollmentId)) || null;
+
+    return {
+      id: record?.id || assignment.id,
+      studentId: assignment.studentId,
+      enrollmentId: assignment.enrollmentId,
+      assignment,
+      student,
+      enrollment,
+      attendance: record,
+      status: record?.status || 'pending',
+    };
+  });
+
+  return {
+    session: decorateSession(session, context),
+    rows,
+    roster: rows,
+    summary: buildAttendanceSummary([...recordsByEnrollment.values()], getSessionAssignments(scheduleId, context)),
+  };
+}
+
+function upsertAttendanceRecord(scheduleId, payload = {}, context, markedBy = 'admin') {
+  const session = context.repositories.scheduleSessions.raw()
+    .find((item) => String(item.id) === String(scheduleId)) || null;
+  ensure(session, 'Jadwal tidak ditemukan.', 404, 'SCHEDULE_NOT_FOUND');
+  ensure(session.status !== 'cancelled', 'Jadwal yang dibatalkan tidak bisa menerima absensi.', 400, 'SCHEDULE_CANCELLED');
+  ensure(payload.enrollmentId, 'Enrollment wajib diisi.', 400, 'ENROLLMENT_REQUIRED');
+  if (payload.status === 'unmarked') {
+    const existingRecord = context.repositories.attendanceRecords.raw().find((item) => (
+      String(item.sessionId) === String(scheduleId) && String(item.enrollmentId) === String(payload.enrollmentId)
+    )) || null;
+    if (existingRecord) {
+      context.repositories.attendanceRecords.remove(existingRecord.id);
+    }
+    return null;
+  }
+
+  ensure(VALID_ATTENDANCE_STATUSES.has(payload.status), 'Status absensi tidak valid.', 400, 'ATTENDANCE_STATUS_INVALID');
+
+  const assignment = getSessionAssignments(scheduleId, context)
+    .find((item) => String(item.enrollmentId) === String(payload.enrollmentId)) || null;
+  ensure(assignment, 'Siswa tidak terdaftar pada jadwal ini.', 404, 'SCHEDULE_ASSIGNMENT_NOT_FOUND');
+
+  const now = context.now();
+  const existing = context.repositories.attendanceRecords.raw().find((item) => (
+    String(item.sessionId) === String(scheduleId) && String(item.enrollmentId) === String(payload.enrollmentId)
+  )) || null;
+  const nextRecord = {
+    id: existing?.id || `att-${scheduleId}-${assignment.enrollmentId}`,
+    sessionId: session.id,
+    assignmentId: assignment.id,
+    enrollmentId: assignment.enrollmentId,
+    studentId: Number(assignment.studentId),
+    courseId: Number(assignment.courseId),
+    status: payload.status,
+    checkInAt: payload.checkInAt || existing?.checkInAt || (payload.status === 'present' || payload.status === 'late' ? now : null),
+    source: markedBy === 'student' ? 'student' : 'admin',
+    recordedBy: payload.recordedBy || markedBy,
+    notes: String(payload.notes || payload.note || '').trim(),
+    markedAt: now,
+    markedBy,
+    note: String(payload.note || payload.notes || '').trim(),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  if (existing) {
+    context.repositories.attendanceRecords.update(existing.id, () => nextRecord);
+  } else {
+    context.repositories.attendanceRecords.insert(nextRecord, { prepend: false });
+  }
+
+  return nextRecord;
+}
+
+function getStudentScheduleBundle(reference = {}, context) {
+  const portal = getStudentPortal(reference, { context });
+  ensure(portal.student, 'Data siswa tidak ditemukan untuk sesi ini.', 404, 'STUDENT_PORTAL_NOT_FOUND');
+  ensure(portal.enrollment && portal.course, 'Enrollment siswa tidak ditemukan.', 404, 'ENROLLMENT_NOT_FOUND');
+  const access = buildClassroomAccessMeta(portal.enrollment, portal.course);
+  ensure(access.canAccess, access.reason, 403, 'CLASSROOM_ACCESS_DENIED', access);
+  const enrollmentId = portal.enrollment?.id;
+  const assignments = context.repositories.scheduleAssignments.raw()
+    .filter((item) => String(item.enrollmentId) === String(enrollmentId) && item.assignmentStatus !== 'removed');
+  const assignedSessionIds = new Set(assignments.map((item) => String(item.sessionId)));
+  const attendanceBySession = new Map(context.repositories.attendanceRecords.raw()
+    .filter((item) => String(item.enrollmentId) === String(enrollmentId))
+    .map((item) => [String(item.sessionId), item]));
+  const schedules = context.repositories.scheduleSessions.raw()
+    .filter((item) => assignedSessionIds.has(String(item.id)) && item.status !== 'cancelled')
+    .map((session) => ({
+      ...decorateSession(session, context),
+      attendance: attendanceBySession.get(String(session.id)) || null,
+      canCheckIn: canStudentCheckIn(session, portal),
+    }))
+    .sort(sortSessionsAsc);
+  const upcoming = schedules.filter((session) => (parseDateTime(session.endAt)?.getTime() || 0) >= Date.now());
+  const history = schedules.filter((session) => (parseDateTime(session.endAt)?.getTime() || 0) < Date.now());
+
+  return {
+    portal,
+    access,
+    schedules,
+    sessions: schedules,
+    upcoming,
+    upcomingSessions: upcoming,
+    history,
+    attendanceHistory: history,
+    nextSession: upcoming[0] || null,
+    attendance: [...attendanceBySession.values()],
+    summary: buildAttendanceSummary([...attendanceBySession.values()], assignments),
+  };
+}
+
+function canStudentCheckIn(session, portal) {
+  const access = buildClassroomAccessMeta(portal.enrollment, portal.course);
+  if (!access.canAccess || ['cancelled', 'completed'].includes(String(session.status || '').toLowerCase())) {
+    return false;
+  }
+
+  return true;
+}
+
+function checkInStudentSchedule(reference = {}, scheduleId, context, payload = {}) {
+  const bundle = getStudentScheduleBundle(reference, context);
+  const session = bundle.schedules.find((item) => String(item.id) === String(scheduleId)) || null;
+  ensure(session, 'Jadwal tidak ditemukan untuk akun ini.', 404, 'STUDENT_SCHEDULE_NOT_FOUND');
+  ensure(!session.attendance, 'Absensi untuk jadwal ini sudah tercatat.', 409, 'ATTENDANCE_ALREADY_RECORDED');
+  ensure(session.canCheckIn, 'Absensi belum tersedia atau akses kelas belum aktif.', 400, 'CHECK_IN_NOT_AVAILABLE');
+
+  const now = context.now();
+  const startsAt = parseDateTime(session.startAt)?.getTime() || 0;
+  const status = Date.now() > startsAt + (LATE_ATTENDANCE_AFTER_MINUTES * 60000) ? 'late' : 'present';
+
+  return upsertAttendanceRecord(scheduleId, {
+    enrollmentId: bundle.portal.enrollment?.id,
+    status: ['present', 'late'].includes(String(payload.status || '').toLowerCase())
+      ? String(payload.status).toLowerCase()
+      : status,
+    checkInAt: payload.checkInAt || now,
+    notes: payload.notes,
+  }, context, 'student');
+}
+
 export function buildLearningOpsSnapshot(options = {}) {
   const context = createBackendContext(options);
   const collections = context.getCollections();
@@ -731,6 +1117,34 @@ export function buildLearningOpsSnapshot(options = {}) {
       eligibleCount: item.eligibleCount,
     }))
     .sort((left, right) => (right.reviewCount + right.retryCount) - (left.reviewCount + left.retryCount));
+  const nowTime = Date.now();
+  const weekAheadTime = nowTime + (7 * 86400000);
+  const recentWindowTime = nowTime - (7 * 86400000);
+  const upcomingSessions = collections.scheduleSessions.filter((session) => {
+    const startTime = parseDateTime(session.startAt)?.getTime() || 0;
+    return session.status !== 'cancelled' && startTime >= nowTime && startTime <= weekAheadTime;
+  });
+  const completedSessions = collections.scheduleSessions.filter((session) => (
+    session.status === 'completed' || (parseDateTime(session.endAt)?.getTime() || 0) < nowTime
+  ));
+  const pendingAttendanceSessions = completedSessions.filter((session) => {
+    const assignments = getSessionAssignments(session.id, context);
+    const records = getSessionAttendance(session.id, context);
+    return assignments.length > records.length;
+  });
+  const recentAttendanceRecords = collections.attendanceRecords.filter((record) => (
+    (parseDateTime(record.markedAt || record.checkInAt)?.getTime() || 0) >= recentWindowTime
+  ));
+  const attendanceRate7d = recentAttendanceRecords.length
+    ? Math.round((recentAttendanceRecords.filter((record) => ['present', 'late', 'excused'].includes(record.status)).length / recentAttendanceRecords.length) * 100)
+    : 0;
+  const riskByEnrollment = recentAttendanceRecords.reduce((map, record) => {
+    if (record.status === 'absent' || record.status === 'late') {
+      map.set(toKey(record.enrollmentId), (map.get(toKey(record.enrollmentId)) || 0) + 1);
+    }
+    return map;
+  }, new Map());
+  const atRiskStudentsCount = [...riskByEnrollment.values()].filter((count) => count >= 2).length;
 
   return {
     classBundles,
@@ -740,6 +1154,12 @@ export function buildLearningOpsSnapshot(options = {}) {
     blockedByPayment,
     unpublishedDefinitions,
     courseHealth,
+    scheduleHealth: {
+      upcomingSessions: upcomingSessions.map((session) => decorateSession(session, context)).sort(sortSessionsAsc),
+      pendingAttendanceSessions: pendingAttendanceSessions.map((session) => decorateSession(session, context)).sort(sortSessionsAsc),
+      attendanceRate7d,
+      atRiskStudentsCount,
+    },
     stats: {
       reviewQueueCount: reviewQueue.length,
       retryCount: retryQueue.length,
@@ -749,6 +1169,10 @@ export function buildLearningOpsSnapshot(options = {}) {
       certificateUploadedCount: classBundles.filter((bundle) => bundle.gate.downloadReady).length,
       assessmentUnpublishedCount: unpublishedDefinitions.length,
       blockedByPaymentCount: blockedByPayment.length,
+      upcomingSessionsCount: upcomingSessions.length,
+      pendingAttendanceMarkingCount: pendingAttendanceSessions.length,
+      attendanceRate7d,
+      atRiskStudentsCount,
     },
   };
 }
@@ -804,11 +1228,16 @@ function buildAdminDashboardPayload(options = {}) {
       retryCount: learningOps.stats.retryCount,
       notStartedCount: learningOps.stats.notStartedCount,
       certificateReadyToUploadCount: learningOps.stats.certificateReadyToUploadCount,
+      upcomingSessionsCount: learningOps.stats.upcomingSessionsCount,
+      pendingAttendanceMarkingCount: learningOps.stats.pendingAttendanceMarkingCount,
+      attendanceRate7d: learningOps.stats.attendanceRate7d,
+      atRiskStudentsCount: learningOps.stats.atRiskStudentsCount,
     },
     recentEnrollments,
     programDistribution,
     reviewQueueTop: learningOps.reviewQueue.slice(0, 4),
     courseHealthTop: learningOps.courseHealth.slice(0, 5),
+    scheduleHealth: learningOps.scheduleHealth,
   };
 }
 
@@ -845,6 +1274,157 @@ export function createAdminService(options = {}) {
 
     getLearningOps() {
       return buildLearningOpsSnapshot({ context });
+    },
+
+    listCourseSchedules(courseIdOrFilters = {}) {
+      const filters = typeof courseIdOrFilters === 'object' && courseIdOrFilters !== null
+        ? courseIdOrFilters
+        : { courseId: courseIdOrFilters };
+      let sessions = filters.courseId
+        ? listCourseSchedules(filters.courseId, context).sessions
+        : context.repositories.scheduleSessions.raw().map((item) => decorateSession(item, context));
+
+      if (filters.enrollmentId) {
+        const sessionIds = new Set(context.repositories.scheduleAssignments.raw()
+          .filter((assignment) => String(assignment.enrollmentId) === String(filters.enrollmentId))
+          .map((assignment) => String(assignment.sessionId)));
+        sessions = sessions.filter((session) => sessionIds.has(String(session.id)));
+      }
+
+      if (filters.status) {
+        sessions = sessions.filter((session) => String(session.status || '').toLowerCase() === String(filters.status).toLowerCase());
+      }
+
+      if (filters.from) {
+        const from = parseDateTime(filters.from);
+        ensure(from, 'Tanggal awal tidak valid.', 400, 'FROM_INVALID');
+        sessions = sessions.filter((session) => (parseDateTime(session.startAt)?.getTime() || 0) >= from.getTime());
+      }
+
+      if (filters.to) {
+        const to = parseDateTime(filters.to);
+        ensure(to, 'Tanggal akhir tidak valid.', 400, 'TO_INVALID');
+        sessions = sessions.filter((session) => (parseDateTime(session.startAt)?.getTime() || 0) <= to.getTime());
+      }
+
+      return { sessions: sessions.sort(sortSessionsAsc) };
+    },
+
+    createCourseSchedule(courseId, payload = {}) {
+      if (typeof courseId === 'object' && courseId !== null) {
+        return createCourseSchedule(courseId.courseId, courseId, context);
+      }
+      return createCourseSchedule(courseId, payload, context);
+    },
+
+    updateCourseSchedule(courseId, scheduleId, payload = {}) {
+      return updateCourseSchedule(courseId, scheduleId, payload, context);
+    },
+
+    removeCourseSchedule(courseId, scheduleId) {
+      return removeCourseSchedule(courseId, scheduleId, context);
+    },
+
+    listScheduleAttendance(scheduleId) {
+      return listScheduleAttendance(scheduleId, context);
+    },
+
+    assignEnrollmentsToSchedule(scheduleId, payload = {}) {
+      const session = context.repositories.scheduleSessions.raw()
+        .find((item) => String(item.id) === String(scheduleId)) || null;
+      ensure(session, 'Jadwal tidak ditemukan.', 404, 'SCHEDULE_NOT_FOUND');
+      const enrollmentIds = Array.isArray(payload.enrollmentIds)
+        ? payload.enrollmentIds
+        : payload.enrollmentId
+          ? [payload.enrollmentId]
+          : [];
+      ensure(enrollmentIds.length, 'Minimal satu enrollment wajib dipilih.', 400, 'ENROLLMENT_REQUIRED');
+      const existingKeys = new Set(context.repositories.scheduleAssignments.raw()
+        .map((item) => `${item.sessionId}:${item.enrollmentId}`));
+      const now = context.now();
+
+      enrollmentIds.forEach((enrollmentId) => {
+        const enrollment = context.getIndexes().enrollmentsById.get(toKey(enrollmentId)) || null;
+        ensure(enrollment, 'Enrollment tidak ditemukan.', 404, 'ENROLLMENT_NOT_FOUND');
+        ensure(String(enrollment.courseId) === String(session.courseId), 'Enrollment tidak sesuai dengan jadwal kursus.', 400, 'ENROLLMENT_COURSE_MISMATCH');
+        const key = `${session.id}:${enrollment.id}`;
+        if (existingKeys.has(key)) return;
+        context.repositories.scheduleAssignments.insert({
+          id: `assign-${session.id}-${enrollment.id}`,
+          sessionId: session.id,
+          enrollmentId: enrollment.id,
+          studentId: Number(enrollment.studentId),
+          courseId: Number(enrollment.courseId),
+          status: 'scheduled',
+          assignmentStatus: 'assigned',
+          createdAt: now,
+          updatedAt: now,
+        }, { prepend: false });
+      });
+
+      return listScheduleAttendance(scheduleId, context);
+    },
+
+    listSessionAttendance(scheduleId) {
+      return listScheduleAttendance(scheduleId, context);
+    },
+
+    recordSessionAttendance(scheduleId, payload = {}) {
+      const existing = context.repositories.attendanceRecords.raw().find((item) => (
+        String(item.sessionId) === String(scheduleId)
+        && String(item.enrollmentId) === String(payload.enrollmentId)
+      )) || null;
+      ensure(!existing, 'Attendance untuk enrollment dan sesi ini sudah ada.', 409, 'ATTENDANCE_DUPLICATE');
+      return upsertAttendanceRecord(scheduleId, {
+        ...payload,
+        status: payload.status || 'present',
+      }, context, payload.source || 'admin');
+    },
+
+    updateSessionAttendance(scheduleId, attendanceId, payload = {}) {
+      const attendance = context.repositories.attendanceRecords.raw().find((item) => (
+        String(item.id) === String(attendanceId)
+        && String(item.sessionId) === String(scheduleId)
+      )) || null;
+      ensure(attendance, 'Attendance tidak ditemukan.', 404, 'ATTENDANCE_NOT_FOUND');
+      return upsertAttendanceRecord(scheduleId, {
+        ...attendance,
+        ...payload,
+        enrollmentId: attendance.enrollmentId,
+        status: payload.status || attendance.status,
+      }, context, payload.source || attendance.source || 'admin');
+    },
+
+    updateScheduleAttendance(scheduleId, payload = {}) {
+      const records = Array.isArray(payload.records) ? payload.records : [payload];
+      records.forEach((record) => upsertAttendanceRecord(scheduleId, record, context, 'admin'));
+      return listScheduleAttendance(scheduleId, context);
+    },
+
+    getStudentSchedules(reference = {}) {
+      const bundle = getStudentScheduleBundle(reference, context);
+      return {
+        access: bundle.access,
+        schedules: bundle.schedules,
+        summary: bundle.summary,
+      };
+    },
+
+    getStudentAttendance(reference = {}) {
+      const bundle = getStudentScheduleBundle(reference, context);
+      return {
+        access: bundle.access,
+        attendance: bundle.attendance,
+        summary: bundle.summary,
+      };
+    },
+
+    checkInStudentSchedule(reference = {}, scheduleId, payload = {}) {
+      const attendance = checkInStudentSchedule(reference, scheduleId, context, payload);
+      return {
+        attendance,
+        schedules: getStudentScheduleBundle(reference, context).schedules,
+      };
     },
 
     listStudents(filters = {}) {

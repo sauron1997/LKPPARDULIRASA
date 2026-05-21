@@ -735,6 +735,61 @@ function createAssessmentSubmissionDefaults(
   return [...seededItems, ...synthesizedItems];
 }
 
+function createScheduleSessionDefaults(courseItems = createCourseDefaults()) {
+  const baseDate = new Date('2026-05-25T09:00:00.000Z');
+
+  return courseItems.map((course, index) => {
+    const startAt = new Date(baseDate.getTime() + index * 86400000);
+    const endAt = new Date(startAt.getTime() + 2 * 60 * 60 * 1000);
+
+    return {
+      id: `session-${course.id}-intro`,
+      courseId: course.id,
+      courseTitle: course.title,
+      moduleId: null,
+      title: `Sesi Pembuka ${course.title}`,
+      description: `Orientasi jadwal dan target belajar untuk ${course.title}.`,
+      instructorName: 'Admin LKP',
+      location: 'Lab Komputer LKP Parduli Rasa',
+      locationLabel: 'Lab Komputer LKP Parduli Rasa',
+      mode: 'offline',
+      status: 'published',
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      createdAt: startAt.toISOString(),
+      updatedAt: startAt.toISOString(),
+    };
+  });
+}
+
+function createScheduleAssignmentDefaults(
+  courseItems = createCourseDefaults(),
+  enrollmentItems = createEnrollmentDefaults(courseItems),
+  sessionItems = createScheduleSessionDefaults(courseItems),
+) {
+  return sessionItems.flatMap((session) => (
+    enrollmentItems
+      .filter((enrollment) => String(enrollment.courseId) === String(session.courseId))
+      .filter((enrollment) => String(enrollment.status || '').toLowerCase() === 'active')
+      .filter((enrollment) => String(enrollment.paymentStatus || '').toLowerCase() === 'verified')
+      .map((enrollment) => ({
+        id: `sched-asg-${session.id}-${enrollment.id}`,
+        sessionId: session.id,
+        enrollmentId: enrollment.id,
+        studentId: enrollment.studentId,
+        courseId: enrollment.courseId,
+        status: 'scheduled',
+        assignmentStatus: 'assigned',
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      }))
+  ));
+}
+
+function createAttendanceRecordDefaults() {
+  return [];
+}
+
 function createClassroomPostDefaults(courseItems = createCourseDefaults()) {
   const seededItems = seedClassroomPosts.map((post, index) => {
     const course = findCourseByReference(courseItems, {
@@ -1131,6 +1186,21 @@ export function getDefaultCertificates() {
   const enrollmentItems = createEnrollmentDefaults(courseItems);
   const studentItems = createStudentDefaults(courseItems, enrollmentItems);
   return createCertificateDefaults(courseItems, enrollmentItems, studentItems);
+}
+
+export function getDefaultScheduleSessions() {
+  const courseItems = createCourseDefaults();
+  return createScheduleSessionDefaults(courseItems, createModuleDefaults(courseItems));
+}
+
+export function getDefaultScheduleAssignments() {
+  const courseItems = createCourseDefaults();
+  const enrollmentItems = createEnrollmentDefaults(courseItems);
+  return createScheduleAssignmentDefaults(courseItems, enrollmentItems, createScheduleSessionDefaults(courseItems));
+}
+
+export function getDefaultAttendanceRecords() {
+  return createAttendanceRecordDefaults();
 }
 
 export function getDefaultAccounts() {

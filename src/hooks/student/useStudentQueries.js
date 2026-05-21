@@ -8,6 +8,7 @@ import {
   fetchStudentMessages,
   fetchStudentModules,
   fetchStudentProfile,
+  fetchStudentSchedule,
 } from '../../services/student/studentClient';
 
 const DEFAULT_STALE_TIME = 60_000;
@@ -34,6 +35,15 @@ export function useStudentModulesQuery(options = {}) {
   return useQuery({
     queryKey: studentQueryKeys.modules(),
     queryFn: fetchStudentModules,
+    staleTime: DEFAULT_STALE_TIME,
+    ...options,
+  });
+}
+
+export function useStudentScheduleQuery(options = {}) {
+  return useQuery({
+    queryKey: studentQueryKeys.schedule(),
+    queryFn: fetchStudentSchedule,
     staleTime: DEFAULT_STALE_TIME,
     ...options,
   });

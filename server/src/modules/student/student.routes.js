@@ -29,6 +29,30 @@ router.get('/modules', asyncHandler(async (req, res) => {
   ok(res, studentService.listModules(getReference(req)));
 }));
 
+router.get('/schedules', asyncHandler(async (req, res) => {
+  ok(res, studentService.listSchedules(getReference(req), req.query || {}));
+}));
+
+router.get('/schedule', asyncHandler(async (req, res) => {
+  ok(res, studentService.listSchedules(getReference(req), req.query || {}));
+}));
+
+router.get('/attendance', asyncHandler(async (req, res) => {
+  ok(res, studentService.listAttendance(getReference(req), req.query || {}));
+}));
+
+router.post('/schedules/:scheduleId/check-in', asyncHandler(async (req, res) => {
+  created(res, studentService.checkInSchedule(getReference(req), req.params.scheduleId, req.body || {}));
+}));
+
+router.post('/schedule/:scheduleId/check-in', asyncHandler(async (req, res) => {
+  created(res, studentService.checkInSchedule(getReference(req), req.params.scheduleId, req.body || {}));
+}));
+
+router.post('/attendance/check-in', asyncHandler(async (req, res) => {
+  created(res, studentService.checkInSchedule(getReference(req), req.body?.sessionId, req.body || {}));
+}));
+
 router.get('/messages', asyncHandler(async (req, res) => {
   ok(res, studentService.listMessages(getReference(req)));
 }));

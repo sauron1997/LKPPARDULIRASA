@@ -11,7 +11,17 @@ const quickReplies = [
 ];
 
 export default function AdminRespon() {
-  const { messages, setMessages, isReady, error, reload } = usePublicMessages();
+  const {
+    threads,
+    isReady,
+    error,
+    reload,
+    onReply,
+    isReplyPending,
+    onStatusChange,
+    isStatusPending,
+    allowDelete,
+  } = usePublicMessages();
 
   return (
     <div className="space-y-7 lg:space-y-8">
@@ -29,12 +39,16 @@ export default function AdminRespon() {
         emptyTitle="Tidak ada pesan publik"
         emptyDescription="Pesan dari website akan muncul di sini setelah pengunjung mengirim form kontak."
         quickReplies={quickReplies}
-        threads={messages}
-        setThreads={setMessages}
+        threads={threads}
         isReady={isReady}
         error={error}
         retryAction={reload}
-        resolveMetaLine={(thread) => `${thread.senderEmail} · ${thread.senderAddress || 'Alamat belum tersedia'}`}
+        onReply={onReply}
+        isReplyPending={isReplyPending}
+        onStatusChange={onStatusChange}
+        isStatusPending={isStatusPending}
+        allowDelete={allowDelete}
+          resolveMetaLine={(thread) => `${thread.senderEmail} - ${thread.senderAddress || 'Alamat belum tersedia'}`}
         resolveSummaryLine={(thread) => thread.body}
       />
     </div>

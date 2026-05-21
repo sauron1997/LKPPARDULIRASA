@@ -1,4 +1,4 @@
-import { Award, BookOpen, CheckCircle2, Clock3, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Award, BookOpen, CalendarDays, CheckCircle2, Clock3, MessageSquare, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useStudentDashboardData } from '../../hooks/student/useStudentDashboardData';
 import './Dashboard.css';
@@ -7,6 +7,40 @@ function formatPaymentLabel(status) {
   if (status === 'verified') return 'Terverifikasi';
   if (status === 'rejected') return 'Perlu Tindak Lanjut';
   return 'Menunggu Verifikasi';
+}
+
+function formatSessionTime(value) {
+  if (!value) return 'Waktu belum ditentukan';
+
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function getSchedulePreview(schedulePayload) {
+  const source = schedulePayload || {};
+  const upcoming = Array.isArray(source.upcoming)
+    ? source.upcoming
+    : Array.isArray(source.upcomingSessions)
+      ? source.upcomingSessions
+      : [];
+  const history = Array.isArray(source.history)
+    ? source.history
+    : Array.isArray(source.attendanceHistory)
+      ? source.attendanceHistory
+      : [];
+  const summary = source.summary || source.attendanceSummary || null;
+  const nextSession = source.nextSession || source.next || upcoming[0] || null;
+
+  return {
+    history,
+    nextSession,
+    summary,
+  };
 }
 
 export default function DashboardHome() {
@@ -48,6 +82,14 @@ export default function DashboardHome() {
   const paymentStatus = portal.enrollment?.paymentStatus || portal.student.paymentStatus || 'pending';
   const pendingThreads = portal.threads.filter((thread) => thread.status !== 'replied').length;
   const currentProgram = portal.course?.title || portal.student.program || 'Program belum ditetapkan';
+  const schedulePreview = getSchedulePreview(portal.schedule || portal.classSchedule);
+  const attendanceSummary = schedulePreview.summary || {};
+  const attendedCount = attendanceSummary.attendedCount ?? attendanceSummary.presentCount ?? attendanceSummary.checkedInCount ?? 0;
+  const totalAttendance = attendanceSummary.totalCount ?? attendanceSummary.sessionCount ?? schedulePreview.history.length;
+  const attendanceRate = attendanceSummary.attendanceRate ?? attendanceSummary.rate ?? (
+    totalAttendance > 0 ? Math.round((attendedCount / totalAttendance) * 100) : null
+  );
+  const shouldShowSchedulePreview = Boolean(schedulePreview.nextSession || schedulePreview.summary);
 
   return (
     <div className="dash-page animate-fade-in">
@@ -176,6 +218,40 @@ export default function DashboardHome() {
             </div>
           </div>
         </article>
+
+        {shouldShowSchedulePreview ? (
+          <article className="student-panel-card">
+            <div className="student-panel-heading">
+              <div>
+                <span className="student-section-eyebrow">Jadwal</span>
+                <h2>Sesi berikutnya</h2>
+              </div>
+              <Link to="/dashboard/classroom/schedule" className="student-inline-link">Buka jadwal</Link>
+            </div>
+
+            <div className="student-highlight-block">
+              <h3>{schedulePreview.nextSession?.title || schedulePreview.nextSession?.topic || 'Belum ada sesi baru'}</h3>
+              <p>{formatSessionTime(schedulePreview.nextSession?.startsAt || schedulePreview.nextSession?.scheduledAt || schedulePreview.nextSession?.date)}</p>
+            </div>
+
+            <div className="student-focus-list">
+              <div className="student-focus-item">
+                <CalendarDays size={18} />
+                <div>
+                  <strong>Absensi</strong>
+                  <p>{attendanceRate == null ? 'Ringkasan kehadiran akan muncul setelah sesi berjalan.' : `${attendanceRate}% kehadiran tercatat.`}</p>
+                </div>
+              </div>
+              <div className="student-focus-item">
+                <CheckCircle2 size={18} />
+                <div>
+                  <strong>Sesi hadir</strong>
+                  <p>{attendedCount}/{totalAttendance} sesi sudah check-in.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        ) : null}
 
         <article className="student-panel-card">
           <div className="student-panel-heading">

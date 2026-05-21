@@ -13,7 +13,29 @@ export function createStudentService(options = {}) {
 
   return {
     getDashboard(reference = {}) {
-      return requirePortal(reference, { context });
+      const portal = requirePortal(reference, { context });
+      let scheduleBundle = {
+        schedules: [],
+        summary: { total: 0, checkedIn: 0, notCheckedIn: 0 },
+      };
+
+      try {
+        scheduleBundle = adminService.getStudentSchedules(reference);
+      } catch (error) {
+        if (error.status !== 403) {
+          throw error;
+        }
+      }
+
+      return {
+        ...portal,
+        schedule: scheduleBundle,
+        classSchedule: scheduleBundle,
+        upcomingSchedules: scheduleBundle.schedules
+          .filter((item) => new Date(item.endAt).getTime() >= Date.now())
+          .slice(0, 3),
+        attendanceSummary: scheduleBundle.summary,
+      };
     },
 
     getProfile(reference = {}) {
@@ -77,6 +99,21 @@ export function createStudentService(options = {}) {
         nextActionableActivity: portal.nextActionableActivity,
         assessmentActivities: portal.assessmentActivities,
       };
+    },
+
+    listSchedules(reference = {}, filters = {}) {
+      requirePortal(reference, { context });
+      return adminService.getStudentSchedules(reference, filters);
+    },
+
+    listAttendance(reference = {}, filters = {}) {
+      requirePortal(reference, { context });
+      return adminService.getStudentAttendance(reference, filters);
+    },
+
+    checkInSchedule(reference = {}, scheduleId, payload = {}) {
+      requirePortal(reference, { context });
+      return adminService.checkInStudentSchedule(reference, scheduleId, payload);
     },
 
     listMessages(reference = {}) {

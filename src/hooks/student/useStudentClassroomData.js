@@ -9,6 +9,7 @@ import {
   useStudentCertificateQuery,
   useStudentDashboardQuery,
   useStudentModulesQuery,
+  useStudentScheduleQuery,
 } from './useStudentQueries';
 
 const EMPTY_PORTAL = {
@@ -36,6 +37,11 @@ const EMPTY_PORTAL = {
     assessmentSummary: [],
   },
   threads: [],
+  schedule: {
+    upcoming: [],
+    history: [],
+    summary: null,
+  },
   hasFullDownloadAccess: false,
   learning: {
     completionPercent: 0,
@@ -56,7 +62,8 @@ function resolveArrayValue(primaryValue, fallbackValue = []) {
   return Array.isArray(primaryValue) ? primaryValue : fallbackValue;
 }
 
-export function useStudentClassroomData() {
+export function useStudentClassroomData(options = {}) {
+  const { includeSchedule = false } = options;
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const dashboardQuery = useStudentDashboardQuery();
@@ -66,6 +73,11 @@ export function useStudentClassroomData() {
   const shouldFetchCertificate = hasStudentContext && !hasOwnValue(dashboardQuery.data, 'certificate');
   const shouldFetchProgress = hasStudentContext && !hasOwnValue(dashboardQuery.data, 'assessments');
   const shouldFetchSubmissions = hasStudentContext && !hasOwnValue(dashboardQuery.data, 'assessmentSubmissions');
+  const dashboardSchedule = dashboardPortal.schedule || dashboardPortal.classSchedule || EMPTY_PORTAL.schedule;
+  const shouldFetchSchedule = includeSchedule
+    && hasStudentContext
+    && !hasOwnValue(dashboardQuery.data, 'schedule')
+    && !hasOwnValue(dashboardQuery.data, 'classSchedule');
 
   const modulesQuery = useStudentModulesQuery({
     enabled: shouldFetchModules,
@@ -78,6 +90,10 @@ export function useStudentClassroomData() {
   });
   const submissionsQuery = useStudentAssessmentSubmissionsQuery({
     enabled: shouldFetchSubmissions,
+  });
+  const scheduleQuery = useStudentScheduleQuery({
+    enabled: shouldFetchSchedule,
+    retry: false,
   });
 
   const modules = shouldFetchModules
@@ -92,6 +108,9 @@ export function useStudentClassroomData() {
   const certificate = shouldFetchCertificate
     ? certificateQuery.data?.certificate ?? dashboardPortal.certificate ?? null
     : dashboardPortal.certificate ?? null;
+  const schedule = shouldFetchSchedule
+    ? scheduleQuery.data ?? dashboardSchedule
+    : dashboardSchedule;
 
   const portal = useMemo(() => buildStudentClassroomPortal({
     user,
@@ -168,6 +187,9 @@ export function useStudentClassroomData() {
       || '',
     portal,
     classroomAccess: portal.classroom?.access || null,
+    schedule,
+    isScheduleLoading: shouldFetchSchedule && scheduleQuery.isPending,
+    scheduleError: shouldFetchSchedule ? scheduleQuery.error?.message || '' : '',
     setAssessmentProgress,
     setAssessmentSubmissions,
     reload: () => {
@@ -176,6 +198,7 @@ export function useStudentClassroomData() {
       if (shouldFetchCertificate) certificateQuery.refetch();
       if (shouldFetchProgress) progressQuery.refetch();
       if (shouldFetchSubmissions) submissionsQuery.refetch();
+      if (shouldFetchSchedule) scheduleQuery.refetch();
     },
   };
 }
