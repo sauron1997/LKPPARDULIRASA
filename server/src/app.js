@@ -81,6 +81,10 @@ export async function createApp(options = {}) {
   const authHandler = await createAuthHandler();
 
   app.disable('x-powered-by');
+  if (env.isProduction) {
+    // Respect forwarded protocol/host when running behind Nginx on the VPS.
+    app.set('trust proxy', 1);
+  }
 
   app.use(cors({
     origin: env.corsOrigins.length > 0 ? env.corsOrigins : env.clientOrigin,

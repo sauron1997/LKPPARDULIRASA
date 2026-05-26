@@ -5,10 +5,22 @@ import * as schema from './schema/index.js';
 
 export const isDatabaseConfigured = Boolean(env.databaseUrl);
 
+function resolveSslConfig() {
+  if (env.databaseSslMode === 'require') {
+    return { rejectUnauthorized: true };
+  }
+
+  if (env.databaseSslMode === 'no-verify') {
+    return { rejectUnauthorized: false };
+  }
+
+  return false;
+}
+
 export const pool = isDatabaseConfigured
   ? new Pool({
     connectionString: env.databaseUrl,
-    ssl: env.isProduction ? { rejectUnauthorized: false } : false,
+    ssl: resolveSslConfig(),
   })
   : null;
 
