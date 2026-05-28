@@ -31,6 +31,14 @@ import {
   normalizeThreadMessages,
   resolveStudentByReference,
 } from '../../../../src/utils/domainRelations.js';
+import {
+  canUseMessageDatabasePersistence,
+  getPersistedMessageCounts,
+} from '../messages/messages.persistence.js';
+import {
+  canUseDatabaseStudentPersistence,
+  getPersistedStudentPortal,
+} from '../student/student.persistence.js';
 
 const COLLECTION_LOADERS = {
   accounts: getDefaultAccounts,
@@ -464,7 +472,14 @@ export function rebuildMediaLibrary(options = {}) {
   return nextMedia;
 }
 
-export function getStudentPortal(reference = {}, options = {}) {
+export async function getStudentPortal(reference = {}, options = {}) {
+  if (canUseDatabaseStudentPersistence() && (reference?.authUserId || reference?.studentId || reference?.email || reference?.nis || reference?.user || reference?.actor)) {
+    const persistedPortal = await getPersistedStudentPortal(reference).catch(() => null);
+    if (persistedPortal?.student) {
+      return sanitizePortal(persistedPortal);
+    }
+  }
+
   const context = createBackendContext(options);
   const user = reference.user || reference.actor || null;
   const studentReference = {
@@ -930,8 +945,8 @@ function upsertAttendanceRecord(scheduleId, payload = {}, context, markedBy = 'a
   return nextRecord;
 }
 
-function getStudentScheduleBundle(reference = {}, context) {
-  const portal = getStudentPortal(reference, { context });
+async function getStudentScheduleBundle(reference = {}, context) {
+  const portal = await getStudentPortal(reference, { context });
   ensure(portal.student, 'Data siswa tidak ditemukan untuk sesi ini.', 404, 'STUDENT_PORTAL_NOT_FOUND');
   ensure(portal.enrollment && portal.course, 'Enrollment siswa tidak ditemukan.', 404, 'ENROLLMENT_NOT_FOUND');
   const access = buildClassroomAccessMeta(portal.enrollment, portal.course);
@@ -978,8 +993,8 @@ function canStudentCheckIn(session, portal) {
   return true;
 }
 
-function checkInStudentSchedule(reference = {}, scheduleId, context, payload = {}) {
-  const bundle = getStudentScheduleBundle(reference, context);
+async function checkInStudentSchedule(reference = {}, scheduleId, context, payload = {}) {
+  const bundle = await getStudentScheduleBundle(reference, context);
   const session = bundle.schedules.find((item) => String(item.id) === String(scheduleId)) || null;
   ensure(session, 'Jadwal tidak ditemukan untuk akun ini.', 404, 'STUDENT_SCHEDULE_NOT_FOUND');
   ensure(!session.attendance, 'Absensi untuk jadwal ini sudah tercatat.', 409, 'ATTENDANCE_ALREADY_RECORDED');
@@ -1268,8 +1283,21 @@ export function createAdminService(options = {}) {
   const { repositories } = context;
 
   return {
-    getDashboard() {
-      return buildAdminDashboardPayload({ context });
+    async getDashboard() {
+      const dashboard = buildAdminDashboardPayload({ context });
+
+      if (!canUseMessageDatabasePersistence()) {
+        return dashboard;
+      }
+
+      const counts = await getPersistedMessageCounts();
+      return {
+        ...dashboard,
+        summary: {
+          ...dashboard.summary,
+          ...counts,
+        },
+      };
     },
 
     getLearningOps() {
@@ -1401,8 +1429,8 @@ export function createAdminService(options = {}) {
       return listScheduleAttendance(scheduleId, context);
     },
 
-    getStudentSchedules(reference = {}) {
-      const bundle = getStudentScheduleBundle(reference, context);
+    async getStudentSchedules(reference = {}) {
+      const bundle = await getStudentScheduleBundle(reference, context);
       return {
         access: bundle.access,
         schedules: bundle.schedules,
@@ -1410,8 +1438,8 @@ export function createAdminService(options = {}) {
       };
     },
 
-    getStudentAttendance(reference = {}) {
-      const bundle = getStudentScheduleBundle(reference, context);
+    async getStudentAttendance(reference = {}) {
+      const bundle = await getStudentScheduleBundle(reference, context);
       return {
         access: bundle.access,
         attendance: bundle.attendance,
@@ -1419,11 +1447,11 @@ export function createAdminService(options = {}) {
       };
     },
 
-    checkInStudentSchedule(reference = {}, scheduleId, payload = {}) {
-      const attendance = checkInStudentSchedule(reference, scheduleId, context, payload);
+    async checkInStudentSchedule(reference = {}, scheduleId, payload = {}) {
+      const attendance = await checkInStudentSchedule(reference, scheduleId, context, payload);
       return {
         attendance,
-        schedules: getStudentScheduleBundle(reference, context).schedules,
+        schedules: (await getStudentScheduleBundle(reference, context)).schedules,
       };
     },
 

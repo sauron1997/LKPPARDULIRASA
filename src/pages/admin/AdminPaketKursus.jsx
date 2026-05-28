@@ -11,6 +11,18 @@ import {
   AdminToast,
 } from '../../components/admin/AdminUi';
 import { useAssessmentDefinitions } from '../../hooks/admin/useAssessmentDefinitions';
+import {
+  useCreateAdminAssessmentDefinitionMutation,
+  useUpdateAdminAssessmentDefinitionMutation,
+} from '../../hooks/admin/useAssessmentQueries';
+import {
+  useCreateAdminCourseModuleMutation,
+  useCreateAdminCourseMutation,
+  useDeleteAdminCourseMutation,
+  useDeleteAdminCourseModuleMutation,
+  useUpdateAdminCourseModuleMutation,
+  useUpdateAdminCourseMutation,
+} from '../../hooks/admin/useCourseQueries';
 import { useCourses } from '../../hooks/admin/useCourses';
 import { useEnrollments } from '../../hooks/admin/useEnrollments';
 import { useModules } from '../../hooks/admin/useModules';
@@ -864,6 +876,14 @@ export default function AdminPaketKursus() {
   const [formError, setFormError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [toast, setToast] = useState({ title: '', description: '', tone: 'emerald' });
+  const createCourseMutation = useCreateAdminCourseMutation();
+  const updateCourseMutation = useUpdateAdminCourseMutation();
+  const deleteCourseMutation = useDeleteAdminCourseMutation();
+  const createModuleMutation = useCreateAdminCourseModuleMutation();
+  const updateModuleMutation = useUpdateAdminCourseModuleMutation();
+  const deleteModuleMutation = useDeleteAdminCourseModuleMutation();
+  const createAssessmentDefinitionMutation = useCreateAdminAssessmentDefinitionMutation();
+  const updateAssessmentDefinitionMutation = useUpdateAdminAssessmentDefinitionMutation();
 
   const error = [
     coursesDomain.error,
@@ -1127,7 +1147,7 @@ export default function AdminPaketKursus() {
     });
   }, []);
 
-  const saveCourse = useCallback(() => {
+  const saveCourse = useCallback(async () => {
     if (!form.title.trim() || !form.price.trim() || !form.duration.trim() || !form.description.trim()) {
       setFormError('Lengkapi nama paket, harga, durasi, dan deskripsi kursus.');
       return;
@@ -1155,6 +1175,7 @@ export default function AdminPaketKursus() {
     const isEditing = editorMode === 'edit' && editingCourseId != null;
     const courseId = isEditing ? editingCourseId : Date.now();
     const now = new Date().toISOString();
+    const existingBundle = courseBundleById.get(String(editingCourseId));
     const normalizedModules = form.modules.map((module, index) => {
       const fallback = buildModuleDownloadFallback(form.title, module.title, module.summary);
       return {
@@ -1173,7 +1194,6 @@ export default function AdminPaketKursus() {
     });
 
     const priceValue = Number(form.price.replace(/[^\d]/g, '')) || 0;
-    const existingBundle = courseBundleById.get(String(editingCourseId));
     const nextCourse = {
       ...(existingBundle?.course || {}),
       id: courseId,
@@ -1258,55 +1278,128 @@ export default function AdminPaketKursus() {
       };
     });
 
-    coursesDomain.setCourses((current) => (
-      isEditing
-        ? current.map((course) => (course.id === courseId ? nextCourse : course))
-        : [nextCourse, ...current]
-    ));
+    try {
+      setFormError('');
 
-    modulesDomain.setModules((current) => {
-      const filtered = current.filter((module) => String(module.courseId) !== String(courseId));
-      return [...normalizedModules, ...filtered];
-    });
+      const coursePayload = {
+        title: nextCourse.title,
+        aliases: nextCourse.aliases,
+        description: nextCourse.description,
+        icon: nextCourse.icon,
+        priceValue: nextCourse.priceValue,
+        priceLabel: nextCourse.priceLabel,
+        duration: nextCourse.duration,
+        level: nextCourse.level,
+        brochureName: nextCourse.brochureName,
+        brochureUrl: nextCourse.brochureUrl,
+        materials: nextCourse.materials,
+      };
 
-    assessmentDefinitionsDomain.setAssessmentDefinitions((current) => {
-      const filtered = current.filter((definition) => String(definition.courseId) !== String(courseId));
-      return [...nextDefinitions, ...filtered];
-    });
+      const savedCourse = isEditing
+        ? await updateCourseMutation.mutateAsync({ courseId, payload: coursePayload })
+        : await createCourseMutation.mutateAsync(coursePayload);
+      const resolvedCourseId = savedCourse?.id ?? courseId;
+      const existingModules = existingBundle?.modules || [];
+      const existingDefinitions = assessmentDefinitionsByCourseId.get(String(resolvedCourseId)) || [];
 
-    studentsDomain.setStudents((current) => current.map((student) => (
-      String(student.courseId) === String(courseId)
-        ? { ...student, program: nextCourse.title }
-        : student
-    )));
+      await Promise.all(
+        existingModules
+          .filter((module) => !normalizedModules.some((candidate) => String(candidate.id) === String(module.id)))
+          .map((module) => deleteModuleMutation.mutateAsync({ courseId: resolvedCourseId, moduleId: module.id })),
+      );
 
-    enrollmentsDomain.setEnrollments((current) => current.map((enrollment) => (
-      String(enrollment.courseId) === String(courseId)
-        ? { ...enrollment, program: nextCourse.title }
-        : enrollment
-    )));
+      for (const [index, module] of normalizedModules.entries()) {
+        const modulePayload = {
+          id: module.id,
+          title: module.title,
+          summary: module.summary,
+          durationLabel: module.durationLabel,
+          order: index + 1,
+          resourceType: module.resourceType || 'lesson',
+          isPublished: module.isPublished ?? true,
+          fileName: module.fileName || '',
+          fileUrl: module.fileUrl || '',
+          mimeType: module.mimeType || '',
+          sizeLabel: module.sizeLabel || '',
+        };
 
-    setSelectedCourseId(courseId);
-    setToast({
-      tone: 'emerald',
-      title: isEditing ? 'Paket kursus diperbarui' : 'Paket kursus ditambahkan',
-      description: 'Program, modul, dan definisi assessment kursus sudah tersinkron ke workspace siswa.',
-    });
-    closeEditor();
+        if (existingModules.some((item) => String(item.id) === String(module.id))) {
+          await updateModuleMutation.mutateAsync({
+            courseId: resolvedCourseId,
+            moduleId: module.id,
+            payload: modulePayload,
+          });
+        } else {
+          await createModuleMutation.mutateAsync({
+            courseId: resolvedCourseId,
+            payload: modulePayload,
+          });
+        }
+      }
+
+      for (const definition of nextDefinitions) {
+        const existingDefinition = existingDefinitions.find((item) => (
+          String(item.id) === String(definition.id)
+          || normalizeAssessmentType(item.type) === normalizeAssessmentType(definition.type)
+        ));
+        const definitionPayload = {
+          courseId: resolvedCourseId,
+          type: definition.type,
+          title: definition.title,
+          summary: definition.summary,
+          instructions: definition.instructions,
+          durationMinutes: definition.durationMinutes,
+          passingScore: definition.passingScore,
+          maxScore: definition.maxScore,
+          maxAttempts: definition.maxAttempts,
+          allowRetry: definition.allowRetry,
+          allowedExtensions: definition.allowedExtensions,
+          submissionMode: definition.submissionMode,
+          isPublished: definition.isPublished,
+          questions: definition.questions,
+        };
+
+        if (existingDefinition?.id) {
+          await updateAssessmentDefinitionMutation.mutateAsync({
+            definitionId: existingDefinition.id,
+            payload: definitionPayload,
+          });
+        } else {
+          await createAssessmentDefinitionMutation.mutateAsync(definitionPayload);
+        }
+      }
+
+      setSelectedCourseId(resolvedCourseId);
+      setToast({
+        tone: 'emerald',
+        title: isEditing ? 'Paket kursus diperbarui' : 'Paket kursus ditambahkan',
+        description: 'Program, modul, dan definisi assessment kursus sekarang tersimpan ke source-of-truth database.',
+      });
+      closeEditor();
+      coursesDomain.reload();
+      assessmentDefinitionsDomain.reload();
+    } catch (error) {
+      setFormError(error?.message || 'Paket kursus gagal disimpan ke database.');
+    }
   }, [
     assessmentDefinitionsDomain,
     closeEditor,
     courseBundleById,
     coursesDomain,
+    createAssessmentDefinitionMutation,
+    createCourseMutation,
+    createModuleMutation,
+    deleteModuleMutation,
     editorMode,
     editingCourseId,
-    enrollmentsDomain,
     form,
-    modulesDomain,
-    studentsDomain,
+    assessmentDefinitionsByCourseId,
+    updateAssessmentDefinitionMutation,
+    updateCourseMutation,
+    updateModuleMutation,
   ]);
 
-  const deleteCourse = useCallback(() => {
+  const deleteCourse = useCallback(async () => {
     if (!confirmDeleteId) {
       return;
     }
@@ -1322,24 +1415,33 @@ export default function AdminPaketKursus() {
       return;
     }
 
-    coursesDomain.setCourses((current) => current.filter((course) => String(course.id) !== String(confirmDeleteId)));
-    modulesDomain.setModules((current) => current.filter((module) => String(module.courseId) !== String(confirmDeleteId)));
-    assessmentDefinitionsDomain.setAssessmentDefinitions((current) => current.filter((definition) => String(definition.courseId) !== String(confirmDeleteId)));
-    if (String(selectedCourseId) === String(confirmDeleteId)) {
-      setSelectedCourseId(null);
+    try {
+      await deleteCourseMutation.mutateAsync(confirmDeleteId);
+      if (String(selectedCourseId) === String(confirmDeleteId)) {
+        setSelectedCourseId(null);
+      }
+      setConfirmDeleteId(null);
+      setToast({
+        tone: 'rose',
+        title: 'Paket dihapus',
+        description: 'Program kursus, modul, dan authoring assessment terkait sudah dihapus dari source-of-truth database.',
+      });
+      coursesDomain.reload();
+      assessmentDefinitionsDomain.reload();
+    } catch (error) {
+      setConfirmDeleteId(null);
+      setToast({
+        tone: 'amber',
+        title: 'Paket gagal dihapus',
+        description: error?.message || 'Hapus paket gagal diproses.',
+      });
     }
-    setConfirmDeleteId(null);
-    setToast({
-      tone: 'rose',
-      title: 'Paket dihapus',
-      description: 'Program kursus, modul, dan authoring assessment terkait sudah dihapus dari katalog.',
-    });
   }, [
     assessmentDefinitionsDomain,
     confirmDeleteId,
     coursesDomain,
+    deleteCourseMutation,
     enrollmentsDomain.enrollments,
-    modulesDomain,
     selectedCourseId,
   ]);
 

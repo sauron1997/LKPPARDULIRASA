@@ -1,4 +1,8 @@
 import { createAdminService, ensure } from '../admin/admin.service.js';
+import {
+  canUseMessageDatabasePersistence as canUseDatabasePersistence,
+  createPersistedPublicMessage,
+} from '../messages/messages.persistence.js';
 
 export function createPublicService(options = {}) {
   const adminService = createAdminService(options);
@@ -138,13 +142,27 @@ export function createPublicService(options = {}) {
         }));
     },
 
-    submitContactMessage(payload = {}) {
+    async submitContactMessage(payload = {}) {
       ensure(payload.name, 'Nama wajib diisi.', 400, 'NAME_REQUIRED');
       ensure(payload.email, 'Email wajib diisi.', 400, 'EMAIL_REQUIRED');
       ensure(payload.address, 'Alamat wajib diisi.', 400, 'ADDRESS_REQUIRED');
       ensure(payload.message, 'Pesan wajib diisi.', 400, 'MESSAGE_REQUIRED');
 
       const createdAt = context.now();
+
+      if (canUseDatabasePersistence()) {
+        const thread = await createPersistedPublicMessage({
+          id: `public-thread-${createdAt.replace(/[^0-9]/g, '')}`,
+          name: String(payload.name).trim(),
+          email: String(payload.email).trim().toLowerCase(),
+          address: String(payload.address).trim(),
+          subject: String(payload.subject || 'Pesan dari halaman kontak').trim(),
+          message: String(payload.message).trim(),
+        }, createdAt);
+
+        return adminService.normalizeThread(thread);
+      }
+
       const nextId = repositories.publicMessages.list().reduce(
         (highest, item) => Math.max(highest, Number(item.id) || 0),
         0,

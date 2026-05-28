@@ -369,6 +369,7 @@ export default function AdminInboxWorkspace({
   emptyDescription,
   quickReplies,
   threads,
+  persistenceMode = 'memory',
   isReady,
   error,
   retryAction,
@@ -568,6 +569,14 @@ export default function AdminInboxWorkspace({
           <p className="mt-1 text-2xl font-semibold text-slate-950">{counts.replied}</p>
         </div>
       </div>
+
+      {persistenceMode !== 'database' ? (
+        <AdminNotice
+          tone="amber"
+          title="Mode penyimpanan sementara aktif"
+          description="Balasan dan lampiran inbox admin saat ini masih tersimpan di memory server. Jika backend restart, data perubahan terbaru dapat hilang."
+        />
+      ) : null}
 
       {error ? (
         <AdminNotice

@@ -13,6 +13,7 @@ const quickReplies = [
 export default function AdminRespon() {
   const {
     threads,
+    persistenceMode,
     isReady,
     error,
     reload,
@@ -40,6 +41,7 @@ export default function AdminRespon() {
         emptyDescription="Pesan dari website akan muncul di sini setelah pengunjung mengirim form kontak."
         quickReplies={quickReplies}
         threads={threads}
+        persistenceMode={persistenceMode}
         isReady={isReady}
         error={error}
         retryAction={reload}

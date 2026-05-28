@@ -22,23 +22,24 @@ function parseAdminReplyPayload(req) {
 }
 
 router.get('/admin/messages/:channel', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, messagesService.listThreads(req.params.channel, req.query || {}));
+  ok(res, await messagesService.listThreads(req.params.channel, req.query || {}));
 }));
 
 router.get('/admin/messages/:channel/:threadId', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, messagesService.getThread(req.params.channel, req.params.threadId));
+  ok(res, await messagesService.getThread(req.params.channel, req.params.threadId));
 }));
 
 router.post('/admin/messages/:channel/:threadId/replies', requireAppRole('admin'), multipartFormDataParser, asyncHandler(async (req, res) => {
-  created(res, messagesService.replyToThread(req.params.channel, req.params.threadId, {
+  created(res, await messagesService.replyToThread(req.params.channel, req.params.threadId, {
     ...parseAdminReplyPayload(req),
     authorRole: 'admin',
     authorName: 'Admin LKP',
+    authorUserId: req.actor?.id || req.appSession?.user?.id || null,
   }));
 }));
 
 router.patch('/admin/messages/:channel/:threadId/status', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, messagesService.updateThreadStatus(req.params.channel, req.params.threadId, req.body || {}));
+  ok(res, await messagesService.updateThreadStatus(req.params.channel, req.params.threadId, req.body || {}));
 }));
 
 export default router;

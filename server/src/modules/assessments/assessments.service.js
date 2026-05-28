@@ -1,4 +1,18 @@
 import { createAdminService, ensure, getStudentPortal } from '../admin/admin.service.js';
+import {
+  canUseDatabaseAssessmentDefinitions,
+  createPersistedAssessmentDefinition,
+  getPersistedAssessmentDefinition,
+  listPersistedAssessmentDefinitions,
+  updatePersistedAssessmentDefinition,
+} from './assessments.persistence.js';
+import {
+  canUseDatabaseStudentPersistence,
+  listPersistedAssessmentProgress,
+  listPersistedAssessmentSubmissions,
+  reviewPersistedAssessment,
+  submitPersistedAssessment,
+} from '../student/student.persistence.js';
 
 function requireAssessmentType(type) {
   return String(type || '').trim().toLowerCase();
@@ -80,7 +94,11 @@ export function createAssessmentsService(options = {}) {
   const { repositories } = context;
 
   return {
-    listDefinitions(filters = {}) {
+    async listDefinitions(filters = {}) {
+      if (canUseDatabaseAssessmentDefinitions()) {
+        return listPersistedAssessmentDefinitions(filters);
+      }
+
       const courseId = filters.courseId;
 
       return repositories.assessmentDefinitions.raw()
@@ -88,15 +106,26 @@ export function createAssessmentsService(options = {}) {
         .map((item) => ({ ...item }));
     },
 
-    getDefinition(definitionId) {
+    async getDefinition(definitionId) {
+      if (canUseDatabaseAssessmentDefinitions()) {
+        const definition = await getPersistedAssessmentDefinition(definitionId);
+        ensure(definition, 'Definition assessment tidak ditemukan.', 404, 'ASSESSMENT_DEFINITION_NOT_FOUND');
+        return definition;
+      }
+
       const definition = repositories.assessmentDefinitions.raw().find((item) => String(item.id) === String(definitionId)) || null;
       ensure(definition, 'Definition assessment tidak ditemukan.', 404, 'ASSESSMENT_DEFINITION_NOT_FOUND');
       return definition;
     },
 
-    createDefinition(payload = {}) {
+    async createDefinition(payload = {}) {
       ensure(payload.courseId, 'Program kursus wajib dipilih.', 400, 'COURSE_REQUIRED');
       ensure(payload.type, 'Tipe assessment wajib diisi.', 400, 'TYPE_REQUIRED');
+
+      if (canUseDatabaseAssessmentDefinitions()) {
+        return createPersistedAssessmentDefinition(payload);
+      }
+
       const definition = {
         id: payload.id || `definition-${payload.courseId}-${requireAssessmentType(payload.type)}`,
         courseId: payload.courseId,
@@ -120,8 +149,14 @@ export function createAssessmentsService(options = {}) {
       return definition;
     },
 
-    updateDefinition(definitionId, payload = {}) {
-      this.getDefinition(definitionId);
+    async updateDefinition(definitionId, payload = {}) {
+      if (canUseDatabaseAssessmentDefinitions()) {
+        const definition = await updatePersistedAssessmentDefinition(definitionId, payload);
+        ensure(definition, 'Definition assessment tidak ditemukan.', 404, 'ASSESSMENT_DEFINITION_NOT_FOUND');
+        return definition;
+      }
+
+      await this.getDefinition(definitionId);
       return repositories.assessmentDefinitions.update(definitionId, (current) => ({
         ...current,
         title: payload.title ?? current.title,
@@ -139,16 +174,30 @@ export function createAssessmentsService(options = {}) {
       }));
     },
 
-    listProgress(filters = {}) {
+    async listProgress(filters = {}) {
+      if (canUseDatabaseStudentPersistence()) {
+        return listPersistedAssessmentProgress(filters);
+      }
+
       return selectAssessmentCollection(filters, context.getCollections(), context.getIndexes(), 'progress');
     },
 
-    listSubmissions(filters = {}) {
+    async listSubmissions(filters = {}) {
+      if (canUseDatabaseStudentPersistence()) {
+        return listPersistedAssessmentSubmissions(filters);
+      }
+
       return selectAssessmentCollection(filters, context.getCollections(), context.getIndexes(), 'submissions');
     },
 
-    submitAssessment(reference = {}, payload = {}) {
-      const portal = getStudentPortal(reference, { context });
+    async submitAssessment(reference = {}, payload = {}) {
+      if (canUseDatabaseStudentPersistence()) {
+        const persistedResult = await submitPersistedAssessment(reference, payload);
+        ensure(persistedResult?.submission && persistedResult?.progress, 'Portal siswa belum siap untuk submission.', 404, 'STUDENT_PORTAL_NOT_FOUND');
+        return persistedResult;
+      }
+
+      const portal = await getStudentPortal(reference, { context });
       ensure(portal.student && portal.enrollment && portal.course, 'Portal siswa belum siap untuk submission.', 404, 'STUDENT_PORTAL_NOT_FOUND');
       ensure(payload.type, 'Tipe assessment wajib diisi.', 400, 'TYPE_REQUIRED');
 
@@ -232,8 +281,14 @@ export function createAssessmentsService(options = {}) {
       };
     },
 
-    reviewSubmission(submissionId, payload = {}) {
+    async reviewSubmission(submissionId, payload = {}) {
       ensure(payload.status, 'Status review wajib diisi.', 400, 'STATUS_REQUIRED');
+
+      if (canUseDatabaseStudentPersistence()) {
+        const persistedReview = await reviewPersistedAssessment(submissionId, payload);
+        ensure(persistedReview?.submission && persistedReview?.progress, 'Submission tidak ditemukan.', 404, 'SUBMISSION_NOT_FOUND');
+        return persistedReview;
+      }
 
       const submission = repositories.assessmentSubmissions.raw().find((item) => String(item.id) === String(submissionId)) || null;
       ensure(submission, 'Submission tidak ditemukan.', 404, 'SUBMISSION_NOT_FOUND');

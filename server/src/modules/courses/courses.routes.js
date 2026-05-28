@@ -9,40 +9,40 @@ const coursesService = createCoursesService();
 router.use(requireAppRole('admin'));
 
 router.get('/', asyncHandler(async (req, res) => {
-  ok(res, coursesService.listCourses(req.query || {}));
+  ok(res, await coursesService.listCourses(req.query || {}));
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  created(res, coursesService.createCourse(req.body || {}));
+  created(res, await coursesService.createCourse(req.body || {}));
 }));
 
 router.get('/:courseId', asyncHandler(async (req, res) => {
-  ok(res, coursesService.getCourse(req.params.courseId));
+  ok(res, await coursesService.getCourse(req.params.courseId));
 }));
 
 router.patch('/:courseId', asyncHandler(async (req, res) => {
-  ok(res, coursesService.updateCourse(req.params.courseId, req.body || {}));
+  ok(res, await coursesService.updateCourse(req.params.courseId, req.body || {}));
 }));
 
 router.delete('/:courseId', asyncHandler(async (req, res) => {
-  coursesService.deleteCourse(req.params.courseId);
+  await coursesService.deleteCourse(req.params.courseId);
   noContent(res);
 }));
 
 router.get('/:courseId/modules', asyncHandler(async (req, res) => {
-  ok(res, coursesService.listModules(req.params.courseId));
+  ok(res, await coursesService.listModules(req.params.courseId));
 }));
 
 router.post('/:courseId/modules', asyncHandler(async (req, res) => {
-  created(res, coursesService.createModule(req.params.courseId, req.body || {}));
+  created(res, await coursesService.createModule(req.params.courseId, req.body || {}));
 }));
 
 router.patch('/:courseId/modules/:moduleId', asyncHandler(async (req, res) => {
-  ok(res, coursesService.updateModule(req.params.courseId, req.params.moduleId, req.body || {}));
+  ok(res, await coursesService.updateModule(req.params.courseId, req.params.moduleId, req.body || {}));
 }));
 
 router.delete('/:courseId/modules/:moduleId', asyncHandler(async (req, res) => {
-  coursesService.deleteModule(req.params.courseId, req.params.moduleId);
+  await coursesService.deleteModule(req.params.courseId, req.params.moduleId);
   noContent(res);
 }));
 

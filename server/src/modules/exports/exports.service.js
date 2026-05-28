@@ -1,4 +1,8 @@
 import { createAdminService } from '../admin/admin.service.js';
+import {
+  canUseMessageDatabasePersistence,
+  listPersistedMessageThreads,
+} from '../messages/messages.persistence.js';
 
 function escapeCsvValue(value) {
   const raw = value == null ? '' : String(value);
@@ -40,6 +44,8 @@ function buildExportPayload(fileBaseName, rows, format = 'json') {
 
 export function createExportsService(options = {}) {
   const adminService = createAdminService(options);
+  const context = adminService.getContext();
+  const { repositories } = context;
 
   return {
     exportStudents(filters = {}) {
@@ -60,12 +66,18 @@ export function createExportsService(options = {}) {
       return buildExportPayload('students-export', rows, filters.format || 'json');
     },
 
-    exportMessages(filters = {}) {
-      const rows = adminService.getDashboard()[filters.channel === 'student' ? 'studentMessages' : 'publicMessages']
+    async exportMessages(filters = {}) {
+      const channel = filters.channel === 'student' ? 'student' : 'public';
+      const sourceThreads = canUseMessageDatabasePersistence()
+        ? await listPersistedMessageThreads(channel)
+        : (channel === 'student'
+          ? repositories.studentMessages.list()
+          : repositories.publicMessages.list());
+      const rows = sourceThreads
         .map((thread) => adminService.normalizeThread(thread))
         .map((thread) => ({
           threadId: thread.id,
-          channel: filters.channel === 'student' ? 'student' : 'public',
+          channel,
           senderName: thread.senderName,
           senderEmail: thread.senderEmail || '',
           subject: thread.subject || '',
@@ -74,7 +86,7 @@ export function createExportsService(options = {}) {
           messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
         }));
 
-      return buildExportPayload(`${filters.channel || 'public'}-messages-export`, rows, filters.format || 'json');
+      return buildExportPayload(`${channel}-messages-export`, rows, filters.format || 'json');
     },
 
     exportCertificates(filters = {}) {

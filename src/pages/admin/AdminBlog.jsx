@@ -17,6 +17,7 @@ import {
   AdminHero,
   AdminInfoPanel,
   AdminMetricCard,
+  AdminNotice,
   AdminPanelTitle,
   AdminPrimaryButton,
   AdminSearchInput,
@@ -100,8 +101,8 @@ function AdminBlogEditorFallback({ isEditing, onClose }) {
 }
 
 export default function AdminBlog() {
-  const { posts, setPosts } = useBlogPosts();
-  const [availableTags, setAvailableTags] = useState(initialBlogTags);
+  const { posts, setPosts, error, reload } = useBlogPosts();
+  const [managedTags, setManagedTags] = useState(initialBlogTags);
   const [showModal, setShowModal] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [selectedPostId, setSelectedPostId] = useState(null);
@@ -118,6 +119,10 @@ export default function AdminBlog() {
 
   const selectedPreviewPost = filteredPosts.find((post) => post.id === selectedPostId) || filteredPosts[0] || null;
   const totalWords = posts.reduce((count, post) => count + stripHtml(post.content || '').split(' ').filter(Boolean).length, 0);
+  const availableTags = Array.from(new Set([
+    ...managedTags,
+    ...posts.flatMap((post) => getPostTags(post)).filter(Boolean),
+  ]));
 
   const blogMetrics = [
     { label: 'Artikel Tersimpan', value: posts.length, hint: 'Konten aktif', icon: FileText, tone: 'emerald' },
@@ -156,7 +161,7 @@ export default function AdminBlog() {
       return null;
     }
 
-    setAvailableTags((current) => (
+    setManagedTags((current) => (
       current.includes(nextTag) ? current : [...current, nextTag]
     ));
 
@@ -169,7 +174,7 @@ export default function AdminBlog() {
       return null;
     }
 
-    setAvailableTags((current) => (
+    setManagedTags((current) => (
       current.map((tagName, tagIndex) => (tagIndex === index ? nextTag : tagName))
     ));
 
@@ -185,7 +190,7 @@ export default function AdminBlog() {
   };
 
   const deleteAvailableTag = (tagName) => {
-    setAvailableTags((current) => current.filter((tag) => tag !== tagName));
+    setManagedTags((current) => current.filter((tag) => tag !== tagName));
 
     setPosts((current) => (
       current.map((post) => ({
@@ -260,6 +265,15 @@ export default function AdminBlog() {
 
   return (
     <div className="animate-fade-in space-y-7 lg:space-y-8">
+      {error ? (
+        <AdminNotice
+          tone="rose"
+          title="Data blog gagal dimuat"
+          description={error}
+          action={<AdminSecondaryButton onClick={reload}>Coba lagi</AdminSecondaryButton>}
+        />
+      ) : null}
+
       <AdminHero
         icon={FileText}
         title="Manajemen Blog"
@@ -345,7 +359,7 @@ export default function AdminBlog() {
                             {post.summary || 'Ringkasan artikel belum ditambahkan.'}
                           </p>
                         </td>
-                        <td className="border-t border-slate-100 px-5 py-4 text-sm text-slate-600">{formatDateLabel(post.date)}</td>
+                        <td className="border-t border-slate-100 px-5 py-4 text-sm text-slate-600">{formatDateLabel(post.publishedAt || post.updatedAt || post.createdAt)}</td>
                         <td className="border-t border-slate-100 px-5 py-4">
                           <div className="flex items-center justify-end gap-2">
                             <button

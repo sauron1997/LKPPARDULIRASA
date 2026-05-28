@@ -1,16 +1,24 @@
 import { useMemo } from 'react';
-import { getDefaultModules } from '../../services/admin/defaults';
-import { useStoredDomain } from './useStoredDomain';
-import { MODULE_STORAGE_KEY } from '../../utils/domainRelations';
+import { useCourses } from './useCourses';
 
 export function useModules() {
-  const domain = useStoredDomain(MODULE_STORAGE_KEY, getDefaultModules);
+  const coursesDomain = useCourses();
+  const modules = useMemo(() => (
+    coursesDomain.courses.flatMap((course) => (
+      Array.isArray(course.modules)
+        ? course.modules.map((module) => ({
+          ...module,
+          courseId: module.courseId ?? course.id,
+        }))
+        : []
+    ))
+  ), [coursesDomain.courses]);
 
   return useMemo(() => ({
-    modules: domain.data,
-    setModules: domain.setData,
-    isReady: domain.isReady,
-    error: domain.error,
-    reload: domain.reload,
-  }), [domain]);
+    modules,
+    setModules: () => {},
+    isReady: coursesDomain.isReady,
+    error: coursesDomain.error,
+    reload: coursesDomain.reload,
+  }), [coursesDomain.error, coursesDomain.isReady, coursesDomain.reload, modules]);
 }

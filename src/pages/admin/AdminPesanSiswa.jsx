@@ -14,6 +14,7 @@ const quickReplies = [
 export default function AdminPesanSiswa() {
   const {
     threads,
+    persistenceMode,
     isReady,
     error,
     reload,
@@ -41,6 +42,7 @@ export default function AdminPesanSiswa() {
         emptyDescription="Pesan dari siswa terdaftar akan tampil di sini untuk ditindaklanjuti admin."
         quickReplies={quickReplies}
         threads={threads}
+        persistenceMode={persistenceMode}
         isReady={isReady}
         error={error}
         retryAction={reload}

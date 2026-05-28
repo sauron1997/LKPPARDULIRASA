@@ -1,17 +1,14 @@
 import { useMemo } from 'react';
-import { getDefaultCourses } from '../../services/admin/defaults';
-import { useStoredDomain } from './useStoredDomain';
-
-const STORAGE_KEY = 'lkp-domain-courses';
+import { useAdminCoursesQuery } from './useCourseQueries';
 
 export function useCourses() {
-  const domain = useStoredDomain(STORAGE_KEY, getDefaultCourses);
+  const query = useAdminCoursesQuery();
 
   return useMemo(() => ({
-    courses: domain.data,
-    setCourses: domain.setData,
-    isReady: domain.isReady,
-    error: domain.error,
-    reload: domain.reload,
-  }), [domain]);
+    courses: Array.isArray(query.data) ? query.data : [],
+    setCourses: () => {},
+    isReady: !query.isPending,
+    error: query.error?.message || '',
+    reload: query.refetch,
+  }), [query.data, query.error?.message, query.isPending, query.refetch]);
 }

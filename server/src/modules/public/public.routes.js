@@ -46,7 +46,7 @@ router.get('/students', asyncHandler(async (req, res) => {
 }));
 
 router.post('/contact-messages', asyncHandler(async (req, res) => {
-  created(res, publicService.submitContactMessage(req.body || {}));
+  created(res, await publicService.submitContactMessage(req.body || {}));
 }));
 
 export default router;

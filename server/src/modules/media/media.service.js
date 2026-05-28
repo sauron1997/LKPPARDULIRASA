@@ -1,4 +1,16 @@
 import { createAdminService, ensure } from '../admin/admin.service.js';
+import {
+  canUseDatabasePersistence,
+  createPersistedGalleryItem,
+  createPersistedLibraryItem,
+  deletePersistedGalleryItem,
+  deletePersistedLibraryItem,
+  getPersistedGalleryItem,
+  listPersistedGalleryItems,
+  listPersistedMediaLibrary,
+  updatePersistedGalleryItem,
+  updatePersistedLibraryItem,
+} from '../content/content.persistence.js';
 
 function normalizeGalleryMedia(payload = {}, fallbackId) {
   if (Array.isArray(payload.media) && payload.media.length) {
@@ -26,9 +38,7 @@ function normalizeGalleryMedia(payload = {}, fallbackId) {
   return [];
 }
 
-export function createMediaService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+function createMemoryMediaService(adminService, context) {
   const { repositories } = context;
 
   return {
@@ -100,7 +110,7 @@ export function createMediaService(options = {}) {
       const now = context.now();
 
       const record = {
-        id: nextId,
+        id: payload.id || nextId,
         title: String(payload.title).trim(),
         description: payload.description || '',
         tags: Array.isArray(payload.tags) ? payload.tags : ['Kursus Komputer'],
@@ -144,6 +154,67 @@ export function createMediaService(options = {}) {
       const removed = repositories.galleryItems.remove(itemId);
       ensure(removed, 'Item galeri tidak ditemukan.', 404, 'GALLERY_ITEM_NOT_FOUND');
       adminService.helpers.rebuildMediaLibrary();
+      return removed;
+    },
+  };
+}
+
+export function createMediaService(options = {}) {
+  const adminService = createAdminService(options);
+  const context = adminService.getContext();
+  const memoryService = createMemoryMediaService(adminService, context);
+
+  if (!canUseDatabasePersistence()) {
+    return memoryService;
+  }
+
+  return {
+    async listLibrary(filters = {}) {
+      return listPersistedMediaLibrary(filters);
+    },
+
+    async createLibraryItem(payload = {}) {
+      ensure(payload.name, 'Nama media wajib diisi.', 400, 'MEDIA_NAME_REQUIRED');
+      ensure(payload.url, 'URL media wajib diisi.', 400, 'MEDIA_URL_REQUIRED');
+      return createPersistedLibraryItem(payload);
+    },
+
+    async updateLibraryItem(mediaId, payload = {}) {
+      const item = await updatePersistedLibraryItem(mediaId, payload);
+      ensure(item, 'Media tidak ditemukan.', 404, 'MEDIA_NOT_FOUND');
+      return item;
+    },
+
+    async deleteLibraryItem(mediaId) {
+      const removed = await deletePersistedLibraryItem(mediaId);
+      ensure(removed, 'Media tidak ditemukan.', 404, 'MEDIA_NOT_FOUND');
+      return removed;
+    },
+
+    async listGalleryItems() {
+      return listPersistedGalleryItems();
+    },
+
+    async getGalleryItem(itemId) {
+      const item = await getPersistedGalleryItem(itemId);
+      ensure(item, 'Item galeri tidak ditemukan.', 404, 'GALLERY_ITEM_NOT_FOUND');
+      return item;
+    },
+
+    async createGalleryItem(payload = {}) {
+      ensure(payload.title, 'Judul galeri wajib diisi.', 400, 'GALLERY_TITLE_REQUIRED');
+      return createPersistedGalleryItem(payload);
+    },
+
+    async updateGalleryItem(itemId, payload = {}) {
+      const item = await updatePersistedGalleryItem(itemId, payload);
+      ensure(item, 'Item galeri tidak ditemukan.', 404, 'GALLERY_ITEM_NOT_FOUND');
+      return item;
+    },
+
+    async deleteGalleryItem(itemId) {
+      const removed = await deletePersistedGalleryItem(itemId);
+      ensure(removed, 'Item galeri tidak ditemukan.', 404, 'GALLERY_ITEM_NOT_FOUND');
       return removed;
     },
   };

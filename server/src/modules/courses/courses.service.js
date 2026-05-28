@@ -1,4 +1,16 @@
 import { createAdminService, ensure } from '../admin/admin.service.js';
+import {
+  canUseDatabaseCoursePersistence,
+  createPersistedCourse,
+  createPersistedModule,
+  deletePersistedCourse,
+  deletePersistedModule,
+  getPersistedCourse,
+  listPersistedCourses,
+  listPersistedModules,
+  updatePersistedCourse,
+  updatePersistedModule,
+} from './courses.persistence.js';
 
 export function createCoursesService(options = {}) {
   const adminService = createAdminService(options);
@@ -19,7 +31,11 @@ export function createCoursesService(options = {}) {
   }
 
   return {
-    listCourses(filters = {}) {
+    async listCourses(filters = {}) {
+      if (canUseDatabaseCoursePersistence()) {
+        return listPersistedCourses(filters);
+      }
+
       const search = String(filters.search || '').trim().toLowerCase();
 
       return repositories.courses.list()
@@ -31,14 +47,29 @@ export function createCoursesService(options = {}) {
         .map(hydrateCourse);
     },
 
-    getCourse(courseId) {
+    async getCourse(courseId) {
+      if (canUseDatabaseCoursePersistence()) {
+        const course = await getPersistedCourse(courseId);
+        ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+        return course;
+      }
+
       const course = repositories.courses.getById(courseId);
       ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
       return hydrateCourse(course);
     },
 
-    createCourse(payload = {}) {
+    async createCourse(payload = {}) {
       ensure(payload.title, 'Nama program wajib diisi.', 400, 'TITLE_REQUIRED');
+
+      if (canUseDatabaseCoursePersistence()) {
+        const course = await createPersistedCourse(payload, {
+          formatCurrency: adminService.helpers.formatCurrency,
+        });
+        ensure(course, 'Program kursus gagal dibuat.', 500, 'COURSE_CREATE_FAILED');
+        return course;
+      }
+
       const now = context.now();
       const nextId = repositories.courses.list().reduce((highest, item) => Math.max(highest, Number(item.id) || 0), 0) + 1;
 
@@ -63,7 +94,15 @@ export function createCoursesService(options = {}) {
       return hydrateCourse(course);
     },
 
-    updateCourse(courseId, payload = {}) {
+    async updateCourse(courseId, payload = {}) {
+      if (canUseDatabaseCoursePersistence()) {
+        const course = await updatePersistedCourse(courseId, payload, {
+          formatCurrency: adminService.helpers.formatCurrency,
+        });
+        ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+        return course;
+      }
+
       const course = repositories.courses.getById(courseId);
       ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
 
@@ -86,7 +125,14 @@ export function createCoursesService(options = {}) {
       return hydrateCourse(updatedCourse);
     },
 
-    deleteCourse(courseId) {
+    async deleteCourse(courseId) {
+      if (canUseDatabaseCoursePersistence()) {
+        const result = await deletePersistedCourse(courseId);
+        ensure(!result?.blocked, 'Program masih dipakai oleh data pendaftaran/siswa.', 409, 'COURSE_IN_USE');
+        ensure(result, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+        return result;
+      }
+
       const hasEnrollment = repositories.enrollments.raw().some((item) => String(item.courseId) === String(courseId));
       ensure(!hasEnrollment, 'Program masih dipakai oleh data pendaftaran/siswa.', 409, 'COURSE_IN_USE');
 
@@ -99,18 +145,30 @@ export function createCoursesService(options = {}) {
       return removed;
     },
 
-    listModules(courseId) {
-      this.getCourse(courseId);
+    async listModules(courseId) {
+      if (canUseDatabaseCoursePersistence()) {
+        const modules = await listPersistedModules(courseId);
+        ensure(modules, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
+        return modules;
+      }
+
+      await this.getCourse(courseId);
       return repositories.modules.list()
         .filter((item) => String(item.courseId) === String(courseId))
         .sort((left, right) => Number(left.order || 0) - Number(right.order || 0));
     },
 
-    createModule(courseId, payload = {}) {
-      const course = this.getCourse(courseId);
+    async createModule(courseId, payload = {}) {
+      const course = await this.getCourse(courseId);
       ensure(payload.title, 'Judul modul wajib diisi.', 400, 'MODULE_TITLE_REQUIRED');
 
-      const modules = this.listModules(courseId);
+      if (canUseDatabaseCoursePersistence()) {
+        const moduleRecord = await createPersistedModule(courseId, payload);
+        ensure(moduleRecord, 'Modul gagal dibuat.', 500, 'MODULE_CREATE_FAILED');
+        return moduleRecord;
+      }
+
+      const modules = await this.listModules(courseId);
       const order = payload.order != null ? Number(payload.order) : modules.length + 1;
       const nextId = payload.id || `mod-${course.id}-${order}`;
       const now = context.now();
@@ -133,8 +191,15 @@ export function createCoursesService(options = {}) {
       return moduleRecord;
     },
 
-    updateModule(courseId, moduleId, payload = {}) {
-      this.getCourse(courseId);
+    async updateModule(courseId, moduleId, payload = {}) {
+      await this.getCourse(courseId);
+
+      if (canUseDatabaseCoursePersistence()) {
+        const moduleRecord = await updatePersistedModule(courseId, moduleId, payload);
+        ensure(moduleRecord, 'Modul tidak ditemukan.', 404, 'MODULE_NOT_FOUND');
+        return moduleRecord;
+      }
+
       const moduleRecord = repositories.modules.raw().find((item) => (
         String(item.id) === String(moduleId)
         && String(item.courseId) === String(courseId)
@@ -154,8 +219,15 @@ export function createCoursesService(options = {}) {
       }));
     },
 
-    deleteModule(courseId, moduleId) {
-      this.getCourse(courseId);
+    async deleteModule(courseId, moduleId) {
+      await this.getCourse(courseId);
+
+      if (canUseDatabaseCoursePersistence()) {
+        const removed = await deletePersistedModule(courseId, moduleId);
+        ensure(removed, 'Modul tidak ditemukan.', 404, 'MODULE_NOT_FOUND');
+        return removed;
+      }
+
       const removed = repositories.modules.remove(moduleId);
       ensure(removed && String(removed.courseId) === String(courseId), 'Modul tidak ditemukan.', 404, 'MODULE_NOT_FOUND');
       return removed;

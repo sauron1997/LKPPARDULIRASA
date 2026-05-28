@@ -52,7 +52,7 @@ function getCover(item) {
 
 export default function AdminGaleri() {
   const { items, setItems, error, reload } = useGallery();
-  const [availableTags, setAvailableTags] = useState(initialGalleryTags);
+  const [managedTags, setManagedTags] = useState(initialGalleryTags);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedItemId, setSelectedItemId] = useState(null);
@@ -65,6 +65,13 @@ export default function AdminGaleri() {
   const [formError, setFormError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [toast, setToast] = useState({ title: '', description: '', tone: 'emerald' });
+
+  const availableTags = useMemo(() => (
+    Array.from(new Set([
+      ...managedTags,
+      ...items.flatMap((item) => item.tags || []).filter(Boolean),
+    ]))
+  ), [items, managedTags]);
 
   const filters = ['Semua', ...availableTags];
 
@@ -142,7 +149,7 @@ export default function AdminGaleri() {
     const nextTag = tagDraft.trim();
     if (!nextTag) return;
 
-    setAvailableTags((current) => (
+    setManagedTags((current) => (
       current.includes(nextTag) ? current : [...current, nextTag]
     ));
     setForm((current) => ({
@@ -162,7 +169,7 @@ export default function AdminGaleri() {
     if (!nextTag || editingTagIndex === null) return;
 
     const previousTag = availableTags[editingTagIndex];
-    setAvailableTags((current) => (
+    setManagedTags((current) => (
       current.map((tag, index) => (index === editingTagIndex ? nextTag : tag))
     ));
     setForm((current) => ({
@@ -180,7 +187,7 @@ export default function AdminGaleri() {
   };
 
   const deleteTag = (tagName) => {
-    setAvailableTags((current) => current.filter((tag) => tag !== tagName));
+    setManagedTags((current) => current.filter((tag) => tag !== tagName));
     setForm((current) => ({
       ...current,
       tags: current.tags.filter((tag) => tag !== tagName),

@@ -33,11 +33,11 @@ function parseAssessmentSubmissionPayload(req) {
 }
 
 router.get('/student/assessments/progress', requireAppRole('student'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.listProgress({ studentId: req.actor.studentId, enrollmentId: req.actor.enrollmentId }));
+  ok(res, await assessmentsService.listProgress({ studentId: req.actor.studentId, enrollmentId: req.actor.enrollmentId }));
 }));
 
 router.get('/student/assessments/submissions', requireAppRole('student'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.listSubmissions({ studentId: req.actor.studentId, enrollmentId: req.actor.enrollmentId }));
+  ok(res, await assessmentsService.listSubmissions({ studentId: req.actor.studentId, enrollmentId: req.actor.enrollmentId }));
 }));
 
 router.post(
@@ -45,32 +45,32 @@ router.post(
   requireAppRole('student'),
   multipartFormDataParser,
   asyncHandler(async (req, res) => {
-    created(res, assessmentsService.submitAssessment(req.actor, parseAssessmentSubmissionPayload(req)));
+    created(res, await assessmentsService.submitAssessment(req.actor, parseAssessmentSubmissionPayload(req)));
   }),
 );
 
 router.get('/admin/assessments/definitions', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.listDefinitions(req.query || {}));
+  ok(res, await assessmentsService.listDefinitions(req.query || {}));
 }));
 
 router.post('/admin/assessments/definitions', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  created(res, assessmentsService.createDefinition(req.body || {}));
+  created(res, await assessmentsService.createDefinition(req.body || {}));
 }));
 
 router.patch('/admin/assessments/definitions/:definitionId', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.updateDefinition(req.params.definitionId, req.body || {}));
+  ok(res, await assessmentsService.updateDefinition(req.params.definitionId, req.body || {}));
 }));
 
 router.get('/admin/assessments/progress', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.listProgress(req.query || {}));
+  ok(res, await assessmentsService.listProgress(req.query || {}));
 }));
 
 router.get('/admin/assessments/submissions', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  ok(res, assessmentsService.listSubmissions(req.query || {}));
+  ok(res, await assessmentsService.listSubmissions(req.query || {}));
 }));
 
 router.post('/admin/assessments/submissions/:submissionId/review', requireAppRole('admin'), asyncHandler(async (req, res) => {
-  created(res, assessmentsService.reviewSubmission(req.params.submissionId, req.body || {}));
+  created(res, await assessmentsService.reviewSubmission(req.params.submissionId, req.body || {}));
 }));
 
 router.get('/admin/certificates', requireAppRole('admin'), asyncHandler(async (req, res) => {

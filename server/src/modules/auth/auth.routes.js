@@ -2,6 +2,11 @@ import { Router } from 'express';
 import { splitSetCookieHeader } from 'better-auth/cookies';
 import { fromNodeHeaders } from 'better-auth/node';
 import { createAuthService } from './auth.service.js';
+import {
+  canUseDatabaseAuthPersistence,
+  ensurePersistedIdentityLink,
+  findPersistedIdentityByIdentifier,
+} from './auth.persistence.js';
 import { asyncHandler, HttpError, ok } from '../../utils/http.js';
 import { auth } from '../../auth/index.js';
 import { loadAppSession, requireAppSession } from '../../auth/session.js';
@@ -28,43 +33,72 @@ function applyResponseHeaders(res, headers) {
 }
 
 async function handleLogin(req, res) {
-  const { account, user } = authService.authenticate(req.body || {});
+  const payload = req.body || {};
+  const persistedIdentity = canUseDatabaseAuthPersistence()
+    ? await findPersistedIdentityByIdentifier(payload.identifier)
+    : null;
+  const { account, user } = persistedIdentity || authService.authenticate(payload);
+  const signInEmail = persistedIdentity?.authUser?.email || account?.email;
+
+  if (!signInEmail) {
+    throw new HttpError(401, 'Email/NIS/username atau password salah.', {
+      code: 'INVALID_CREDENTIALS',
+    });
+  }
 
   try {
-    await auth.api.signUpEmail({
-      body: {
-        name: user.name,
-        email: user.email,
-        password: req.body?.password,
-        username: user.role === 'student' && user.nis ? user.nis : user.username || user.email,
-        role: user.role,
-        studentId: user.studentId != null ? String(user.studentId) : undefined,
-        nis: user.nis || undefined,
-        accountId: user.accountId || account.id,
-        courseId: user.courseId != null ? String(user.courseId) : undefined,
-        enrollmentId: user.enrollmentId || undefined,
-      },
-      headers: fromNodeHeaders(req.headers),
-    });
+    if (!persistedIdentity) {
+      await auth.api.signUpEmail({
+        body: {
+          name: user.name,
+          email: user.email,
+          password: payload?.password,
+          username: user.role === 'student' && user.nis ? user.nis : user.username || user.email,
+          role: user.role,
+          studentId: user.studentId != null ? String(user.studentId) : undefined,
+          nis: user.nis || undefined,
+          accountId: user.accountId || account.id,
+          courseId: user.courseId != null ? String(user.courseId) : undefined,
+          enrollmentId: user.enrollmentId || undefined,
+        },
+        headers: fromNodeHeaders(req.headers),
+      });
+    }
   } catch (error) {
-    if (![400, 409, 422].includes(error?.statusCode)) {
+    if (!persistedIdentity && ![400, 409, 422].includes(error?.statusCode)) {
       throw new HttpError(error?.statusCode || 500, error?.message || 'Provisioning auth gagal diproses.', {
         code: error?.code || 'AUTH_PROVISION_FAILED',
       });
     }
   }
 
-  const response = await auth.api.signInEmail({
-    body: {
-      email: account.email,
-      password: req.body?.password,
-    },
-    headers: fromNodeHeaders(req.headers),
-    asResponse: true,
-  });
+  let response;
+  try {
+    response = await auth.api.signInEmail({
+      body: {
+        email: signInEmail,
+        password: payload?.password,
+      },
+      headers: fromNodeHeaders(req.headers),
+      asResponse: true,
+    });
+  } catch (error) {
+    throw new HttpError(401, 'Email/NIS/username atau password salah.', {
+      code: 'INVALID_CREDENTIALS',
+      details: error?.message || null,
+    });
+  }
 
   applyResponseHeaders(res, response.headers);
-  const result = authService.login(req.body || {});
+  const healedIdentity = canUseDatabaseAuthPersistence()
+    ? await ensurePersistedIdentityLink({
+      authUserId: persistedIdentity?.authUser?.id || null,
+      identifier: payload.identifier,
+    }).catch(() => persistedIdentity)
+    : null;
+  const result = persistedIdentity
+    ? { token: null, user: healedIdentity?.user || user }
+    : authService.login(payload);
   ok(res, result);
 }
 

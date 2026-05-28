@@ -1,4 +1,8 @@
 import { createAuthService } from '../modules/auth/auth.service.js';
+import {
+  canUseDatabaseAuthPersistence,
+  findPersistedIdentityByAuthUserId,
+} from '../modules/auth/auth.persistence.js';
 import { loadRequestAuth } from '../middleware/requireAuth.js';
 import { HttpError, asyncHandler } from '../utils/http.js';
 
@@ -26,6 +30,7 @@ function normalizePermissions(value) {
 function normalizeBetterAuthUser(user = {}, session = null) {
   return {
     id: user.accountId || user.studentId || user.id || null,
+    authUserId: user.id || null,
     accountId: user.accountId || null,
     username: user.username || '',
     role: user.role || 'student',
@@ -53,9 +58,13 @@ export async function loadAppSession(req) {
   const authState = await loadRequestAuth(req).catch(() => null);
 
   if (authState?.user && authState?.session) {
+    const persistedIdentity = canUseDatabaseAuthPersistence()
+      ? await findPersistedIdentityByAuthUserId(authState.user.id).catch(() => null)
+      : null;
+
     req.appSession = {
       token: null,
-      user: normalizeBetterAuthUser(authState.user, authState.session),
+      user: persistedIdentity?.user || normalizeBetterAuthUser(authState.user, authState.session),
       provider: 'better-auth',
       session: authState.session,
     };

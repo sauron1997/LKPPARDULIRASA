@@ -1,16 +1,14 @@
 import { useMemo } from 'react';
-import { getDefaultAssessmentDefinitions } from '../../services/admin/defaults';
-import { useStoredDomain } from './useStoredDomain';
-import { ASSESSMENT_DEFINITION_STORAGE_KEY } from '../../utils/domainRelations';
+import { useAdminAssessmentDefinitionsQuery } from './useAssessmentQueries';
 
 export function useAssessmentDefinitions() {
-  const domain = useStoredDomain(ASSESSMENT_DEFINITION_STORAGE_KEY, getDefaultAssessmentDefinitions);
+  const query = useAdminAssessmentDefinitionsQuery();
 
   return useMemo(() => ({
-    assessmentDefinitions: domain.data,
-    setAssessmentDefinitions: domain.setData,
-    isReady: domain.isReady,
-    error: domain.error,
-    reload: domain.reload,
-  }), [domain]);
+    assessmentDefinitions: Array.isArray(query.data) ? query.data : [],
+    setAssessmentDefinitions: () => {},
+    isReady: !query.isPending,
+    error: query.error?.message || '',
+    reload: query.refetch,
+  }), [query.data, query.error?.message, query.isPending, query.refetch]);
 }

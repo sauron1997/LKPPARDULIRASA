@@ -9,40 +9,40 @@ const mediaService = createMediaService();
 router.use(requireAppRole('admin'));
 
 router.get('/library', asyncHandler(async (req, res) => {
-  ok(res, mediaService.listLibrary(req.query || {}));
+  ok(res, await mediaService.listLibrary(req.query || {}));
 }));
 
 router.post('/library', asyncHandler(async (req, res) => {
-  created(res, mediaService.createLibraryItem(req.body || {}));
+  created(res, await mediaService.createLibraryItem(req.body || {}));
 }));
 
 router.patch('/library/:mediaId', asyncHandler(async (req, res) => {
-  ok(res, mediaService.updateLibraryItem(req.params.mediaId, req.body || {}));
+  ok(res, await mediaService.updateLibraryItem(req.params.mediaId, req.body || {}));
 }));
 
 router.delete('/library/:mediaId', asyncHandler(async (req, res) => {
-  mediaService.deleteLibraryItem(req.params.mediaId);
+  await mediaService.deleteLibraryItem(req.params.mediaId);
   noContent(res);
 }));
 
 router.get('/gallery', asyncHandler(async (req, res) => {
-  ok(res, mediaService.listGalleryItems());
+  ok(res, await mediaService.listGalleryItems());
 }));
 
 router.post('/gallery', asyncHandler(async (req, res) => {
-  created(res, mediaService.createGalleryItem(req.body || {}));
+  created(res, await mediaService.createGalleryItem(req.body || {}));
 }));
 
 router.get('/gallery/:itemId', asyncHandler(async (req, res) => {
-  ok(res, mediaService.getGalleryItem(req.params.itemId));
+  ok(res, await mediaService.getGalleryItem(req.params.itemId));
 }));
 
 router.patch('/gallery/:itemId', asyncHandler(async (req, res) => {
-  ok(res, mediaService.updateGalleryItem(req.params.itemId, req.body || {}));
+  ok(res, await mediaService.updateGalleryItem(req.params.itemId, req.body || {}));
 }));
 
 router.delete('/gallery/:itemId', asyncHandler(async (req, res) => {
-  mediaService.deleteGalleryItem(req.params.itemId);
+  await mediaService.deleteGalleryItem(req.params.itemId);
   noContent(res);
 }));
 

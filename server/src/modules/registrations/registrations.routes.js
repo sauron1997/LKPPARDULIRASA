@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { fromNodeHeaders } from 'better-auth/node';
 import { createRegistrationsService } from './registrations.service.js';
+import { findPersistedIdentityByIdentifier } from '../auth/auth.persistence.js';
 import { auth } from '../../auth/index.js';
 import { asyncHandler, created, ok } from '../../utils/http.js';
 import { HttpError } from '../../utils/http.js';
@@ -28,7 +29,7 @@ router.get('/options', asyncHandler(async (req, res) => {
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  const registration = registrationsService.createRegistration(req.body || {});
+  const registration = await registrationsService.createRegistration(req.body || {});
 
   try {
     await auth.api.signUpEmail({
@@ -36,7 +37,7 @@ router.post('/', asyncHandler(async (req, res) => {
       headers: fromNodeHeaders(req.headers),
     });
   } catch (error) {
-    registrationsService.rollbackRegistrationArtifacts(registration);
+    await registrationsService.rollbackRegistrationArtifacts(registration);
 
     if (error?.statusCode === 422 || error?.statusCode === 400) {
       throw new HttpError(409, 'Email ini sudah terdaftar. Silakan login atau gunakan email lain.', {
@@ -49,6 +50,11 @@ router.post('/', asyncHandler(async (req, res) => {
     });
   }
 
+  const persistedIdentity = await findPersistedIdentityByIdentifier(registration.student.email).catch(() => null);
+  await registrationsService.finalizeRegistration({
+    ...registration,
+    authUserId: persistedIdentity?.authUser?.id || null,
+  });
   created(res, registration);
 }));
 

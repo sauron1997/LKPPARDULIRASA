@@ -19,7 +19,7 @@ router.get('/students', asyncHandler(async (req, res) => {
 }));
 
 router.get('/messages', asyncHandler(async (req, res) => {
-  sendExport(res, exportsService.exportMessages(req.query || {}));
+  sendExport(res, await exportsService.exportMessages(req.query || {}));
 }));
 
 router.get('/certificates', asyncHandler(async (req, res) => {

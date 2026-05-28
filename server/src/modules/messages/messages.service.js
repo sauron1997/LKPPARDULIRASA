@@ -1,6 +1,13 @@
 import { createAdminService, ensure } from '../admin/admin.service.js';
 import { createPublicService } from '../public/public.service.js';
 import { createStudentService } from '../student/student.service.js';
+import {
+  canUseMessageDatabasePersistence as canUseDatabasePersistence,
+  createPersistedAdminReply,
+  getPersistedMessageThread as getPersistedThread,
+  listPersistedMessageThreads as listPersistedThreads,
+  updatePersistedMessageThreadStatus as updatePersistedThreadStatus,
+} from './messages.persistence.js';
 
 const MAX_ATTACHMENT_SIZE = 2.5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
@@ -103,27 +110,77 @@ export function createMessagesService(options = {}) {
   const studentService = createStudentService({ context: adminService.getContext() });
   const context = adminService.getContext();
   const { repositories } = context;
+  const persistenceMode = canUseDatabasePersistence() ? 'database' : 'memory';
+
+  function withPersistenceMode(payload, key) {
+    if (key) {
+      return {
+        [key]: payload,
+        persistenceMode,
+      };
+    }
+
+    return {
+      ...payload,
+      persistenceMode,
+    };
+  }
 
   return {
-    listThreads(channel, filters = {}) {
+    async listThreads(channel, filters = {}) {
+      if (canUseDatabasePersistence()) {
+        const search = String(filters.search || '').trim().toLowerCase();
+        const threads = (await listPersistedThreads(channel, filters))
+          .map((thread) => ({
+            ...adminService.normalizeThread(thread),
+            persistenceMode,
+          }))
+          .filter((thread) => {
+            if (!search) return true;
+            const haystack = `${thread.senderName || ''} ${thread.senderEmail || ''} ${thread.subject || ''} ${thread.body || ''}`.toLowerCase();
+            return haystack.includes(search);
+          })
+          .sort(adminService.helpers.compareByUpdatedDesc);
+
+        return withPersistenceMode(threads, 'threads');
+      }
+
       const repo = resolveChannelRepo(repositories, channel);
       const search = String(filters.search || '').trim().toLowerCase();
 
-      return repo.list()
+      const threads = repo.list()
         .map((thread) => adminService.normalizeThread(thread))
         .filter((thread) => {
           if (!search) return true;
           const haystack = `${thread.senderName || ''} ${thread.senderEmail || ''} ${thread.subject || ''} ${thread.body || ''}`.toLowerCase();
           return haystack.includes(search);
         })
-        .sort(adminService.helpers.compareByUpdatedDesc);
+        .sort(adminService.helpers.compareByUpdatedDesc)
+        .map((thread) => ({
+          ...thread,
+          persistenceMode,
+        }));
+
+      return withPersistenceMode(threads, 'threads');
     },
 
-    getThread(channel, threadId) {
+    async getThread(channel, threadId) {
+      if (canUseDatabasePersistence()) {
+        const thread = await getPersistedThread(channel, threadId);
+        ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
+        return withPersistenceMode({
+          ...adminService.normalizeThread(thread),
+          persistenceMode,
+        }, 'thread');
+      }
+
       const repo = resolveChannelRepo(repositories, channel);
       const thread = repo.getById(threadId);
       ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
-      return adminService.normalizeThread(thread);
+      return withPersistenceMode({
+        ...adminService.normalizeThread(thread),
+        persistenceMode,
+      }, 'thread');
     },
 
     createPublicMessage(payload = {}) {
@@ -134,7 +191,23 @@ export function createMessagesService(options = {}) {
       return studentService.createMessageThread(reference, payload);
     },
 
-    replyToThread(channel, threadId, payload = {}) {
+    async replyToThread(channel, threadId, payload = {}) {
+      if (canUseDatabasePersistence()) {
+        const attachment = normalizeReplyAttachment(payload);
+        ensure(payload.body || attachment, 'Isi balasan atau lampiran wajib diisi.', 400, 'MESSAGE_REQUIRED');
+
+        const thread = await createPersistedAdminReply(channel, threadId, {
+          authorName: payload.authorName || 'Admin LKP',
+          body: String(payload.body || '').trim(),
+        }, attachment, context.now());
+
+        ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
+        return {
+          ...adminService.normalizeThread(thread),
+          persistenceMode,
+        };
+      }
+
       const repo = resolveChannelRepo(repositories, channel);
       const thread = repo.getById(threadId);
       ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
@@ -184,11 +257,25 @@ export function createMessagesService(options = {}) {
         messages: [...normalized.messages, nextMessage],
       }));
 
-      return this.getThread(channel, threadId);
+      const updatedThread = repo.getById(threadId);
+      return {
+        ...adminService.normalizeThread(updatedThread),
+        persistenceMode,
+      };
     },
 
-    updateThreadStatus(channel, threadId, payload = {}) {
+    async updateThreadStatus(channel, threadId, payload = {}) {
       ensure(payload.status, 'Status thread wajib diisi.', 400, 'STATUS_REQUIRED');
+
+      if (canUseDatabasePersistence()) {
+        const thread = await updatePersistedThreadStatus(channel, threadId, { status: payload.status }, context.now());
+        ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
+        return {
+          ...adminService.normalizeThread(thread),
+          persistenceMode,
+        };
+      }
+
       const repo = resolveChannelRepo(repositories, channel);
       const thread = repo.getById(threadId);
       ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
@@ -201,7 +288,11 @@ export function createMessagesService(options = {}) {
         unreadByStudent: channel === 'student' && payload.status !== 'unread',
       }));
 
-      return this.getThread(channel, threadId);
+      const updatedThread = repo.getById(threadId);
+      return {
+        ...adminService.normalizeThread(updatedThread),
+        persistenceMode,
+      };
     },
   };
 }

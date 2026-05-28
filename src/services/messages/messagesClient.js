@@ -2,6 +2,38 @@ import { createRouteFamilyClient } from '../admin/routeClient';
 
 const adminApiClient = createRouteFamilyClient('/api/v1/admin');
 
+function normalizeThreadsResponse(payload) {
+  if (Array.isArray(payload)) {
+    return {
+      threads: payload,
+      persistenceMode: 'memory',
+    };
+  }
+
+  return {
+    threads: Array.isArray(payload?.threads)
+      ? payload.threads
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : [],
+    persistenceMode: payload?.persistenceMode === 'database' ? 'database' : 'memory',
+  };
+}
+
+function normalizeThreadResponse(payload) {
+  if (payload && !Array.isArray(payload) && payload.thread) {
+    return {
+      thread: payload.thread,
+      persistenceMode: payload?.persistenceMode === 'database' ? 'database' : 'memory',
+    };
+  }
+
+  return {
+    thread: payload,
+    persistenceMode: 'memory',
+  };
+}
+
 function appendFormDataValue(formData, key, value) {
   if (value === undefined || value === null || value === '') {
     return;
@@ -48,11 +80,13 @@ function normalizeReplyPayload(payload) {
 }
 
 export function fetchAdminMessageThreads(channel, filters = {}) {
-  return adminApiClient.request(['messages', channel], { params: filters });
+  return adminApiClient.request(['messages', channel], { params: filters })
+    .then(normalizeThreadsResponse);
 }
 
 export function fetchAdminMessageThread(channel, threadId) {
-  return adminApiClient.request(['messages', channel, threadId]);
+  return adminApiClient.request(['messages', channel, threadId])
+    .then(normalizeThreadResponse);
 }
 
 export function replyAdminMessageThread(channel, threadId, payload) {

@@ -9,7 +9,7 @@ const adminService = createAdminService();
 router.use(requireAppRole('admin'));
 
 router.get('/dashboard', asyncHandler(async (req, res) => {
-  ok(res, adminService.getDashboard());
+  ok(res, await adminService.getDashboard());
 }));
 
 router.get('/learning-ops', asyncHandler(async (req, res) => {

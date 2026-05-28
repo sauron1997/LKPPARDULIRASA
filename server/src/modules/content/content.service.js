@@ -1,8 +1,21 @@
 import { createAdminService, ensure } from '../admin/admin.service.js';
+import {
+  canUseDatabasePersistence,
+  createPersistedAccreditation,
+  createPersistedBlogPost,
+  deletePersistedAccreditation,
+  deletePersistedBlogPost,
+  getPersistedAccreditation,
+  getPersistedBlogPost,
+  getPersistedProfile,
+  listPersistedAccreditations,
+  listPersistedBlogPosts,
+  updatePersistedAccreditation,
+  updatePersistedBlogPost,
+  updatePersistedProfile,
+} from './content.persistence.js';
 
-export function createContentService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+function createMemoryContentService(adminService, context) {
   const { repositories } = context;
 
   return {
@@ -11,13 +24,11 @@ export function createContentService(options = {}) {
     },
 
     updateProfile(payload = {}) {
-      const updatedProfile = repositories.profile.update((current) => ({
+      return repositories.profile.update((current) => ({
         ...current,
         ...payload,
         updatedAt: context.now(),
       }));
-
-      return updatedProfile;
     },
 
     listBlogPosts(filters = {}) {
@@ -48,7 +59,7 @@ export function createContentService(options = {}) {
       const nextId = repositories.blogPosts.list().reduce((highest, item) => Math.max(highest, Number(item.id) || 0), 0) + 1;
 
       const post = {
-        id: nextId,
+        id: payload.id || nextId,
         slug: payload.slug || adminService.helpers.slugify(payload.title),
         title: String(payload.title).trim(),
         summary: payload.summary || '',
@@ -113,7 +124,7 @@ export function createContentService(options = {}) {
       const nextId = repositories.accreditations.list().reduce((highest, item) => Math.max(highest, Number(item.id) || 0), 0) + 1;
 
       const record = {
-        id: nextId,
+        id: payload.id || nextId,
         title: String(payload.title).trim(),
         certificateNumber: payload.certificateNumber || '',
         description: payload.description || '',
@@ -154,6 +165,80 @@ export function createContentService(options = {}) {
       const removed = repositories.accreditations.remove(itemId);
       ensure(removed, 'Dokumen akreditasi tidak ditemukan.', 404, 'ACCREDITATION_NOT_FOUND');
       adminService.helpers.rebuildMediaLibrary();
+      return removed;
+    },
+  };
+}
+
+export function createContentService(options = {}) {
+  const adminService = createAdminService(options);
+  const context = adminService.getContext();
+  const memoryService = createMemoryContentService(adminService, context);
+
+  if (!canUseDatabasePersistence()) {
+    return memoryService;
+  }
+
+  return {
+    async getProfile() {
+      return getPersistedProfile();
+    },
+
+    async updateProfile(payload = {}) {
+      return updatePersistedProfile(payload);
+    },
+
+    async listBlogPosts(filters = {}) {
+      return listPersistedBlogPosts(filters);
+    },
+
+    async getBlogPost(postId) {
+      const post = await getPersistedBlogPost(postId);
+      ensure(post, 'Artikel blog tidak ditemukan.', 404, 'BLOG_POST_NOT_FOUND');
+      return post;
+    },
+
+    async createBlogPost(payload = {}) {
+      ensure(payload.title, 'Judul artikel wajib diisi.', 400, 'BLOG_TITLE_REQUIRED');
+      return createPersistedBlogPost(payload);
+    },
+
+    async updateBlogPost(postId, payload = {}) {
+      const post = await updatePersistedBlogPost(postId, payload);
+      ensure(post, 'Artikel blog tidak ditemukan.', 404, 'BLOG_POST_NOT_FOUND');
+      return post;
+    },
+
+    async deleteBlogPost(postId) {
+      const removed = await deletePersistedBlogPost(postId);
+      ensure(removed, 'Artikel blog tidak ditemukan.', 404, 'BLOG_POST_NOT_FOUND');
+      return removed;
+    },
+
+    async listAccreditations() {
+      return listPersistedAccreditations();
+    },
+
+    async getAccreditation(itemId) {
+      const item = await getPersistedAccreditation(itemId);
+      ensure(item, 'Dokumen akreditasi tidak ditemukan.', 404, 'ACCREDITATION_NOT_FOUND');
+      return item;
+    },
+
+    async createAccreditation(payload = {}) {
+      ensure(payload.title, 'Judul akreditasi wajib diisi.', 400, 'ACCREDITATION_TITLE_REQUIRED');
+      return createPersistedAccreditation(payload);
+    },
+
+    async updateAccreditation(itemId, payload = {}) {
+      const item = await updatePersistedAccreditation(itemId, payload);
+      ensure(item, 'Dokumen akreditasi tidak ditemukan.', 404, 'ACCREDITATION_NOT_FOUND');
+      return item;
+    },
+
+    async deleteAccreditation(itemId) {
+      const removed = await deletePersistedAccreditation(itemId);
+      ensure(removed, 'Dokumen akreditasi tidak ditemukan.', 404, 'ACCREDITATION_NOT_FOUND');
       return removed;
     },
   };
