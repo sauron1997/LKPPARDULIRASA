@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'lkp-parduli-rasa-api',
       cwd: '/var/www/lkp-parduli-rasa/current',
-      script: 'server/src/index.js',
+      script: 'apps/api/src/index.js',
       instances: 1,
       autorestart: true,
       max_restarts: 5,

@@ -1,14 +1,22 @@
 # LKP Parduli Rasa
 
-React + Vite frontend with a local Node/Express backend and a repo-local Graphify workflow.
+Monorepo npm workspaces with a React + Vite frontend in `apps/web`, a Node/Express backend in `apps/api`, and a shared domain package in `packages/domain`.
 
 ## Core Commands
 
-- `npm run dev` runs the client and server together.
-- Use only one dev entrypoint at a time. Do not run `npm run dev` and `npm run dev:server` together, or the backend will fail with `EADDRINUSE` on port `3001`.
-- If you want separate terminals, use `npm run dev:client` and `npm run dev:server`.
-- `npm run build` builds the frontend bundle.
+- `npm run dev` runs the web app and API together.
+- `npm run dev:web` starts the Vite frontend only.
+- `npm run dev:api` starts the Express backend only.
+- `npm run build` builds the frontend bundle into `apps/web/dist`.
 - `npm run lint` runs ESLint across the repo.
+- `npm run smoke:dev` starts a finite automation smoke test for the web/API dev servers.
+- `npm run db:generate`, `npm run db:migrate`, and `npm run db:seed` operate on the API schema in `apps/api`.
+
+## Windows Harness Notes
+
+Windows PowerShell 5.1 can resolve bare `npm` to `npm.ps1`, which may be blocked by execution policy. For automation on Windows, prefer `npm.cmd run smoke:dev` or `node scripts/dev-smoke.mjs full`.
+
+The smoke harness avoids PowerShell inline `node -e`, `Start-Process`, and wrapper PID cleanup. It starts the API and Vite directly with Node, waits for bounded health checks, and shuts the child processes down before exiting.
 
 ## Graphify Workflow
 

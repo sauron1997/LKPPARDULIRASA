@@ -1,0 +1,21 @@
+{
+  "name": "@lkp-parduli-rasa/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:seed": "node src/db/seed.js"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.6.10",
+    "@lkp-parduli-rasa/domain": "file:../../packages/domain",
+    "better-auth": "^1.6.10",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}

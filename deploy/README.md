@@ -17,7 +17,7 @@ Deploy target untuk repo ini adalah `Ubuntu 24.04 + Nginx + PM2 + PostgreSQL` de
 ## Struktur Direktori Rekomendasi
 
 - release app: `/var/www/lkp-parduli-rasa/current`
-- frontend build: `/var/www/lkp-parduli-rasa/current/dist`
+- frontend build: `/var/www/lkp-parduli-rasa/current/apps/web/dist`
 - upload persisten: `/var/lib/lkp-parduli-rasa/uploads`
 - backup: `/var/backups/lkp-parduli-rasa`
 
@@ -38,7 +38,7 @@ Catatan:
 3. Siapkan file `.env` produksi.
 4. Jalankan migrasi database yang dibutuhkan.
 5. Jalankan `npm run build`.
-6. Start backend dengan PM2 memakai [deploy/pm2/ecosystem.config.cjs](/D:/DATA%20FERRY%20PENTING/LKP%20Parduli%20Rasa/deploy/pm2/ecosystem.config.cjs).
+6. Start backend dengan PM2 memakai [deploy/pm2/ecosystem.config.cjs](/D:/DATA%20FERRY%20PENTING/LKP%20Parduli%20Rasa/deploy/pm2/ecosystem.config.cjs) yang menjalankan `apps/api/src/index.js`.
 7. Pasang konfigurasi Nginx dari [deploy/nginx/lkp-parduli-rasa.conf.example](/D:/DATA%20FERRY%20PENTING/LKP%20Parduli%20Rasa/deploy/nginx/lkp-parduli-rasa.conf.example).
 8. Aktifkan SSL dengan Certbot.
 9. Jalankan smoke check dari [deploy/scripts/post-deploy-checklist.sh](/D:/DATA%20FERRY%20PENTING/LKP%20Parduli%20Rasa/deploy/scripts/post-deploy-checklist.sh).
@@ -47,7 +47,7 @@ Catatan:
 
 Template Nginx ini mengasumsikan:
 
-- `root` menunjuk ke folder `dist`
+- `root` menunjuk ke folder `apps/web/dist`
 - route SPA menggunakan `try_files $uri $uri/ /index.html`
 - backend private di `127.0.0.1:3001`
 

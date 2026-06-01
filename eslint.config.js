@@ -5,10 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['**/dist/**']),
   {
-    files: ['**/*.{js,jsx}'],
-    ignores: ['server/**/*.js', 'drizzle.config.js', 'vite.config.js'],
+    files: ['apps/web/src/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -28,7 +27,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['server/**/*.js', 'drizzle.config.js', 'vite.config.js'],
+    files: ['apps/api/**/*.js', 'packages/domain/**/*.js', 'drizzle.config.js', 'apps/web/vite.config.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 2020,

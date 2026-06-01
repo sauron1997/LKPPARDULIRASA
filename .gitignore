@@ -15,10 +15,12 @@ graphify-out/
 .graphify_uncached.txt
 .graphify_transcripts.json
 .codex/
+.agents/
 
 node_modules
 dist
 dist-ssr
+apps/api/uploads/
 *.local
 .graphify_*.json
 .graphify-site/

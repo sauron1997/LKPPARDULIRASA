@@ -3,7 +3,7 @@ server {
     listen [::]:80;
     server_name domain-anda www.domain-anda;
 
-    root /var/www/lkp-parduli-rasa/current/dist;
+    root /var/www/lkp-parduli-rasa/current/apps/web/dist;
     index index.html;
 
     location / {
