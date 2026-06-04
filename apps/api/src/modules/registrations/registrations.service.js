@@ -7,12 +7,13 @@ import {
 } from '../auth/auth.persistence.js';
 import { persistDataUrlMediaAsset } from '../media/media.storage.js';
 import { requireDb } from '../../db/client.js';
-import {
-  authUsers,
-  enrollments as enrollmentTable,
-  mediaAssets,
-  students as studentTable,
-} from '../../db/schema/index.js';
+  import {
+    authUsers,
+    enrollments as enrollmentTable,
+    mediaAssets,
+    payments as paymentsTable,
+    students as studentTable,
+  } from '../../db/schema/index.js';
 
 function generateNextStudentId(students) {
   return students.reduce((highest, student) => Math.max(highest, Number(student.id) || 0), 0) + 1;
@@ -277,6 +278,7 @@ export function createRegistrationsService(options = {}) {
           paymentId: paymentResult.paymentId,
           redirectUrl: paymentResult.redirectUrl,
           token: paymentResult.token,
+          publicAccessToken: paymentResult.publicAccessToken,
         };
       } catch (paymentError) {
         // Payment creation failed but registration succeeded
@@ -286,7 +288,7 @@ export function createRegistrationsService(options = {}) {
 
       return {
         registeredEmail: normalizedEmail,
-        redirectTo: payment ? `/payment/${enrollmentId}` : '/login',
+        redirectTo: payment ? `/payment/${enrollmentId}?token=${encodeURIComponent(payment.publicAccessToken)}` : '/login',
         student,
         account: {
           ...account,
@@ -336,6 +338,7 @@ export function createRegistrationsService(options = {}) {
         const database = requireDb();
 
         if (registration.enrollment?.id) {
+          await database.delete(paymentsTable).where(eq(paymentsTable.enrollmentId, registration.enrollment.id));
           await database.delete(enrollmentTable).where(eq(enrollmentTable.id, registration.enrollment.id));
         }
 

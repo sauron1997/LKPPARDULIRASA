@@ -1,6 +1,7 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   getDefaultAccreditations,
+  getDefaultAccounts,
   getDefaultAssessmentDefinitions,
   getDefaultAssessmentProgress,
   getDefaultAssessmentSubmissions,
@@ -16,10 +17,14 @@ import {
   getDefaultStudents,
   getPublicSocialLinks,
 } from '@lkp-parduli-rasa/domain/defaults';
+import { normalizeLoginIdentifier } from '@lkp-parduli-rasa/domain/domain-relations';
+import { auth } from '../auth/index.js';
 import { env } from '../config/env.js';
+import { finalizePersistedIdentityLink } from '../modules/auth/auth.persistence.js';
 import { db, requireDb } from './client.js';
 import {
   accreditations,
+  authUsers,
   assessmentDefinitions,
   assessmentProgress,
   assessmentQuestions,
@@ -38,6 +43,7 @@ import {
   students,
   submissionAnswers,
   threadMessages,
+  userProfiles,
 } from './schema/index.js';
 
 function flattenSubmissionAnswers(items) {
@@ -89,6 +95,11 @@ function flattenThreadMessages(threads, channel) {
 async function resetTables(database) {
   await database.execute(sql`
     TRUNCATE TABLE
+      "session",
+      "account",
+      "verification",
+      "user",
+      user_profiles,
       submission_answers,
       assessment_submissions,
       assessment_progress,
@@ -112,6 +123,109 @@ async function resetTables(database) {
   `);
 }
 
+function buildSeedAuthHeaders() {
+  return new Headers({
+    origin: env.clientOrigin,
+    referer: env.clientOrigin,
+  });
+}
+
+function buildIdentifierRows(authUserId, account, student, now) {
+  return [
+    {
+      id: `${authUserId}:email`,
+      authUserId,
+      identifier: normalizeLoginIdentifier(account?.email),
+      type: 'email',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${authUserId}:username`,
+      authUserId,
+      identifier: normalizeLoginIdentifier(account?.username),
+      type: 'username',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${authUserId}:nis`,
+      authUserId,
+      identifier: normalizeLoginIdentifier(student?.nis),
+      type: 'nis',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ].filter((item) => item.identifier);
+}
+
+async function provisionAuthAccount(database, account, student = null, enrollment = null) {
+  const headers = buildSeedAuthHeaders();
+
+  await auth.api.signUpEmail({
+    body: {
+      name: account.name,
+      email: account.email,
+      password: account.password,
+      username: account.username || student?.nis || account.email,
+      role: account.role || 'student',
+      studentId: student?.id != null ? String(student.id) : undefined,
+      nis: student?.nis || account.nis || undefined,
+      accountId: account.id || account.accountId,
+      courseId: enrollment?.courseId != null ? String(enrollment.courseId) : (account.courseId != null ? String(account.courseId) : undefined),
+      enrollmentId: enrollment?.id || account.enrollmentId || undefined,
+    },
+    headers,
+  });
+
+  const [authUser] = await database.select().from(authUsers).where(eq(authUsers.email, account.email)).limit(1);
+  if (!authUser) {
+    throw new Error(`Auth user provisioning failed for ${account.email}.`);
+  }
+
+  if (student) {
+    return finalizePersistedIdentityLink({
+      authUserId: authUser.id,
+      student,
+      enrollment,
+      role: account.role || 'student',
+    });
+  }
+
+  const now = new Date();
+  const identifierRows = buildIdentifierRows(authUser.id, account, student, now);
+
+  await database.transaction(async (tx) => {
+    await tx.update(authUsers)
+      .set({
+        name: account.name,
+        email: account.email,
+        username: account.username || authUser.username || account.email,
+        role: account.role || 'admin',
+        accountId: account.id || account.accountId || authUser.accountId,
+        updatedAt: now,
+      })
+      .where(eq(authUsers.id, authUser.id));
+
+    await tx.insert(userProfiles).values({
+      authUserId: authUser.id,
+      role: account.role || 'admin',
+      status: account.status || 'active',
+      studentId: null,
+      displayName: account.displayName || account.name,
+      permissions: Array.isArray(account.permissions) ? account.permissions : ['*'],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (identifierRows.length > 0) {
+      await tx.insert(loginIdentifiers).values(identifierRows);
+    }
+  });
+
+  return authUser;
+}
+
 export async function seedDatabase() {
   if (!env.databaseUrl) {
     throw new Error('DATABASE_URL is not configured.');
@@ -120,6 +234,7 @@ export async function seedDatabase() {
   const database = requireDb();
   const profile = getDefaultProfile();
   const social = getPublicSocialLinks(profile);
+  const seedAccounts = getDefaultAccounts();
   const seedCourses = getDefaultCourses();
   const seedModules = getDefaultModules();
   const seedStudents = getDefaultStudents();
@@ -210,25 +325,6 @@ export async function seedDatabase() {
     updatedAt: new Date(student.updatedAt || student.createdAt || new Date().toISOString()),
   })));
 
-  await database.insert(loginIdentifiers).values(seedStudents.flatMap((student) => ([
-    {
-      id: `identifier-email-${student.id}`,
-      authUserId: null,
-      identifier: String(student.email).trim().toLowerCase(),
-      type: 'email',
-      createdAt: new Date(student.createdAt || new Date().toISOString()),
-      updatedAt: new Date(student.updatedAt || student.createdAt || new Date().toISOString()),
-    },
-    {
-      id: `identifier-nis-${student.id}`,
-      authUserId: null,
-      identifier: String(student.nis),
-      type: 'nis',
-      createdAt: new Date(student.createdAt || new Date().toISOString()),
-      updatedAt: new Date(student.updatedAt || student.createdAt || new Date().toISOString()),
-    },
-  ])));
-
   await database.insert(enrollments).values(seedEnrollments.map((item) => ({
     id: item.id,
     studentId: Number(item.studentId),
@@ -246,6 +342,29 @@ export async function seedDatabase() {
     createdAt: new Date(item.createdAt || new Date().toISOString()),
     updatedAt: new Date(item.updatedAt || item.createdAt || new Date().toISOString()),
   })));
+
+  const enrollmentsByStudentId = new Map(seedEnrollments.map((item) => [String(item.studentId), item]));
+  const studentsById = new Map(seedStudents.map((student) => [String(student.id), student]));
+  const adminAccount = seedAccounts.find((account) => String(account.role || '').toLowerCase() === 'admin') || null;
+  const studentAccounts = seedAccounts.filter((account) => String(account.role || '').toLowerCase() === 'student');
+
+  if (adminAccount) {
+    await provisionAuthAccount(database, adminAccount);
+  }
+
+  for (const account of studentAccounts) {
+    const student = studentsById.get(String(account.studentId || ''));
+    if (!student) {
+      continue;
+    }
+
+    await provisionAuthAccount(
+      database,
+      account,
+      student,
+      enrollmentsByStudentId.get(String(student.id)) || null,
+    );
+  }
 
   await database.insert(assessmentDefinitions).values(seedDefinitions.map((item) => ({
     id: item.id,

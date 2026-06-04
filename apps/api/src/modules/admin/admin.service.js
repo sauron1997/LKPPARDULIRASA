@@ -1564,6 +1564,12 @@ export function createAdminService(options = {}) {
     },
 
     async updatePaymentStatus(studentId, payload = {}) {
+      ensure(
+        !canUseDatabaseStudentPersistence(),
+        'Gunakan modul review pembayaran manual untuk mengubah status pembayaran pada mode database.',
+        409,
+        'PAYMENT_STATUS_MANAGED_BY_PAYMENTS_MODULE',
+      );
       ensure(payload.paymentStatus, 'Status pembayaran wajib diisi.', 400, 'PAYMENT_STATUS_REQUIRED');
       return this.updateStudent(studentId, {
         paymentStatus: payload.paymentStatus,

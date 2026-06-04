@@ -29,6 +29,8 @@ export default function RegisterPage() {
   const [submitError, setSubmitError] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
   const [ijazahFile, setIjazahFile] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  const [ijazahError, setIjazahError] = useState('');
   const registrationOptionsQuery = useRegistrationOptionsQuery();
   const registrationMutation = useCreateRegistrationMutation();
   const courses = registrationOptionsQuery.data?.courses || [];
@@ -47,8 +49,49 @@ export default function RegisterPage() {
   const optionsError = registrationOptionsQuery.error?.message || '';
   const isReady = !isLoadingOptions;
 
+  const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+  const Ijazah_MAX_BYTES = 2 * 1024 * 1024;
+  const PHOTO_ALLOWED_MIME = ['image/jpeg', 'image/png'];
+  const Ijazah_ALLOWED_MIME = ['image/jpeg', 'image/png', 'application/pdf'];
+
+  function validateUploadedFile(file, allowedMime, maxBytes, label) {
+    if (!file) return '';
+    if (!allowedMime.includes(file.type)) {
+      return `${label}: Format file tidak didukung. Gunakan: ${allowedMime.join(', ').replace(/image\//g, '').toUpperCase()}`;
+    }
+    if (file.size > maxBytes) {
+      return `${label}: Ukuran file maksimal ${(maxBytes / (1024 * 1024)).toFixed(0)}MB.`;
+    }
+    return '';
+  }
+
+  function handlePhotoChange(event) {
+    const file = event.target.files?.[0] || null;
+    const error = validateUploadedFile(file, PHOTO_ALLOWED_MIME, PHOTO_MAX_BYTES, 'Pas Foto');
+    setPhotoError(error);
+    if (!error) setPhotoFile(file);
+  }
+
+  function handleIjazahChange(event) {
+    const file = event.target.files?.[0] || null;
+    const error = validateUploadedFile(file, Ijazah_ALLOWED_MIME, Ijazah_MAX_BYTES, 'Foto Ijazah');
+    setIjazahError(error);
+    if (!error) setIjazahFile(file);
+  }
+
   const onSubmit = async (data) => {
     setSubmitError('');
+
+    // Validasi file sebelum submit
+    const photoErr = validateUploadedFile(photoFile, PHOTO_ALLOWED_MIME, PHOTO_MAX_BYTES, 'Pas Foto');
+    const ijazahErr = validateUploadedFile(ijazahFile, Ijazah_ALLOWED_MIME, Ijazah_MAX_BYTES, 'Foto Ijazah');
+    if (photoErr || ijazahErr) {
+      setPhotoError(photoErr);
+      setIjazahError(ijazahErr);
+      setStep(2);
+      return;
+    }
+
     const normalizedEmail = normalizeEmail(data.email);
     const selectedCourse = courses.find((course) => String(course.id) === String(data.courseId)) || null;
 
@@ -310,11 +353,13 @@ export default function RegisterPage() {
                     <input
                       id="register-photo"
                       type="file"
-                      accept="image/*"
-                      onChange={(event) => setPhotoFile(event.target.files?.[0] || null)}
+                      accept="image/jpeg,image/png"
+                      onChange={handlePhotoChange}
                     />
                   </div>
-                  {photoFile ? (
+                  {photoError ? (
+                    <span className="form-error">{photoError}</span>
+                  ) : photoFile ? (
                     <p className="file-name">OK {photoFile.name}</p>
                   ) : (
                     <small>Upload pas foto 4x6 dengan latar belakang merah/biru.</small>
@@ -329,15 +374,29 @@ export default function RegisterPage() {
                     <input
                       id="register-ijazah"
                       type="file"
-                      accept="image/*,.pdf"
-                      onChange={(event) => setIjazahFile(event.target.files?.[0] || null)}
+                      accept="image/jpeg,image/png,application/pdf"
+                      onChange={handleIjazahChange}
                     />
                   </div>
-                  {ijazahFile ? (
+                  {ijazahError ? (
+                    <span className="form-error">{ijazahError}</span>
+                  ) : ijazahFile ? (
                     <p className="file-name">OK {ijazahFile.name}</p>
                   ) : (
                     <small>Upload foto ijazah terakhir atau dokumen pengganti.</small>
                   )}
+                </div>
+                <div className="form-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      {...register('photoDeclaration', {
+                        validate: (value) => value || 'Centang untuk menyatakan pas foto berlatar belakang merah',
+                      })}
+                    />
+                    <span>Saya menyatakan bahwa pas foto yang diupload berlatar belakang merah</span>
+                  </label>
+                  {errors.photoDeclaration ? <span className="form-error">{errors.photoDeclaration.message}</span> : null}
                 </div>
               </div>
             ) : null}

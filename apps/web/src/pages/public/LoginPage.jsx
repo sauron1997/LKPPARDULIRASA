@@ -52,7 +52,7 @@ export default function LoginPage() {
             <div className="login-logo">
               <GraduationCap size={32} />
             </div>
-            <h2>Login Siswa</h2>
+            <h2>Login Dashboard</h2>
             <p>Masuk dengan email, username, atau NIS yang terdaftar untuk membuka dashboard belajar.</p>
           </div>
 

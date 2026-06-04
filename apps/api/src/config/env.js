@@ -31,7 +31,7 @@ function parseOrigins(value, fallback) {
     .filter(Boolean);
 }
 
-function resolvePublicHost(value, fallback = '127.0.0.1') {
+function resolvePublicHost(value, fallback = 'localhost') {
   const host = String(value || '').trim();
 
   if (!host || host === '0.0.0.0' || host === '::') {
@@ -70,7 +70,7 @@ function isLocalUrl(value) {
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const apiBasePath = normalizeBasePath(process.env.API_BASE_PATH, '/api');
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.HOST || 'localhost';
 const port = parsePort(process.env.PORT, 3001);
 const authBasePath = normalizeBasePath(process.env.AUTH_BASE_PATH, `${apiBasePath}/auth`);
 const publicHost = resolvePublicHost(host);

@@ -49,7 +49,15 @@ export function AuthProvider({ children, scope = 'protected' }) {
       });
 
       const nextSession = await sessionState.refetch().catch(() => null);
+      const hasNextSession = Boolean(nextSession?.data?.session && nextSession?.data?.user);
       const sessionUser = normalizeSessionUser(nextSession?.data?.user);
+
+      if (!hasNextSession) {
+        return {
+          success: false,
+          message: 'Login diterima, tetapi sesi belum aktif di browser. Coba lagi. Jika tetap gagal, aktifkan cookie lalu refresh halaman.',
+        };
+      }
 
       if (payload?.user) {
         queryClient.setQueryData(authQueryKeys.me(), payload.user);

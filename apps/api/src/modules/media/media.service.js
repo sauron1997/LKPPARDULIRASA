@@ -177,6 +177,7 @@ export function createMediaService(options = {}) {
       const database = requireDb();
       const [asset] = await database.select().from(mediaAssets).where(eq(mediaAssets.id, String(mediaId))).limit(1);
       ensure(asset, 'Media tidak ditemukan.', 404, 'MEDIA_NOT_FOUND');
+      ensure(String(asset.ownerType || '') !== 'manual-payment', 'Media tidak dapat diakses.', 403, 'MEDIA_FORBIDDEN');
       ensure(String(asset.visibility || 'public') === 'public', 'Media tidak dapat diakses.', 403, 'MEDIA_FORBIDDEN');
       return {
         ...asset,

@@ -43,6 +43,8 @@ const AdminClassroom = lazy(() => import('./pages/admin/AdminClassroom'));
 const AdminRespon = lazy(() => import('./pages/admin/AdminRespon'));
 const AdminPesanSiswa = lazy(() => import('./pages/admin/AdminPesanSiswa'));
 const AdminSosialMedia = lazy(() => import('./pages/admin/AdminSosialMedia'));
+const AdminPaymentReviews = lazy(() => import('./pages/admin/AdminPaymentReviews'));
+const AdminPaymentSettings = lazy(() => import('./pages/admin/AdminPaymentSettings'));
 
 import './index.css';
 
@@ -118,6 +120,8 @@ function App() {
                 <Route path="/admin/respon" element={<AdminRespon />} />
                 <Route path="/admin/pesan-siswa" element={<AdminPesanSiswa />} />
                 <Route path="/admin/sosial-media" element={<AdminSosialMedia />} />
+                <Route path="/admin/payment-reviews" element={<AdminPaymentReviews />} />
+                <Route path="/admin/payment-settings" element={<AdminPaymentSettings />} />
               </Route>
             </Route>
           </Routes>

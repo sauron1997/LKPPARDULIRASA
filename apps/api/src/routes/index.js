@@ -11,7 +11,8 @@ import contentRouter from '../modules/content/content.routes.js';
 import mediaRouter from '../modules/media/media.routes.js';
 import exportsRouter from '../modules/exports/exports.routes.js';
 import classroomRouter from '../modules/classroom/classroom.routes.js';
-import paymentsRouter from '../modules/payments/payments.routes.js';
+import paymentsRouter, { adminRouter as adminPaymentsRouter } from '../modules/payments/payments.routes.js';
+import paymentSettingsRouter, { adminRouter as adminPaymentSettingsRouter } from '../modules/paymentSettings/paymentSettings.routes.js';
 
 const router = Router();
 
@@ -30,5 +31,8 @@ router.use('/v1/admin/media', mediaRouter);
 router.use('/v1/admin/classroom', classroomRouter);
 router.use('/v1/admin/exports', exportsRouter);
 router.use('/v1/payments', paymentsRouter);
+router.use('/v1/admin/payments', adminPaymentsRouter);
+router.use('/v1/payment-settings', paymentSettingsRouter);
+router.use('/v1/admin/payment-settings', adminPaymentSettingsRouter);
 
 export default router;

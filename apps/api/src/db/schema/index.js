@@ -7,3 +7,4 @@ export * from './messaging.js';
 export * from './media.js';
 export * from './audit.js';
 export * from './payments.js';
+export * from './paymentSettings.js';

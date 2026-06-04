@@ -2,9 +2,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import {
   Award,
+  Banknote,
   BookOpen,
   Building2,
   ChevronLeft,
+  ClipboardCheck,
   CreditCard,
   FileText,
   Image,
@@ -41,6 +43,8 @@ const adminMenu = [
   { path: '/admin/respon', icon: MessageCircle, label: 'Respon Publik' },
   { path: '/admin/pesan-siswa', icon: MessageSquare, label: 'Pesan Siswa' },
   { path: '/admin/sosial-media', icon: Link2, label: 'Sosial Media' },
+  { path: '/admin/payment-reviews', icon: ClipboardCheck, label: 'Review Pembayaran' },
+  { path: '/admin/payment-settings', icon: Banknote, label: 'Pengaturan Pembayaran' },
 ];
 
 function BrandShield() {
