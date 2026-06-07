@@ -1,12 +1,14 @@
 {
-  "name": "@lkp-parduli-rasa/domain",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.js",
-    "./defaults": "./src/defaults.js",
-    "./domain-relations": "./src/domainRelations.js",
-    "./mock-data": "./src/mockData.js"
-  }
+ "name": "@lkp-parduli-rasa/domain",
+ "private": true,
+ "version": "0.0.0",
+ "type": "module",
+ "exports": {
+ ".": "./src/index.js",
+ "./defaults": "./src/defaults.js",
+ "./domain-relations": "./src/domainRelations.js",
+ "./mock-data": "./src/mockData.js",
+ "./use-cases": "./src/use-cases/index.js",
+ "./entities": "./src/entities/index.js"
+ }
 }

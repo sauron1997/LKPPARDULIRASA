@@ -13,12 +13,28 @@ async function loadOptionalActor(req) {
   return session?.user || null;
 }
 
+function isStudentActor(actor = null) {
+  return String(actor?.role || '').toLowerCase() === 'student';
+}
+
 // Create a payment transaction (used internally by registration)
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', requireAppRole(['admin', 'student']), asyncHandler(async (req, res) => {
   const { enrollmentId, studentId, amount, itemDetails, customerDetails } = req.body || {};
+  const actor = req.actor;
+
+  if (isStudentActor(actor)) {
+    if (studentId != null && String(studentId) !== String(actor?.studentId || '')) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Anda tidak memiliki akses untuk membuat pembayaran bagi siswa lain.' } });
+    }
+
+    if (enrollmentId != null && actor?.enrollmentId && String(enrollmentId) !== String(actor.enrollmentId)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Anda tidak memiliki akses untuk membuat pembayaran bagi enrollment lain.' } });
+    }
+  }
+
   const result = await paymentsService.createPaymentTransaction({
-    enrollmentId,
-    studentId,
+    enrollmentId: isStudentActor(actor) ? actor?.enrollmentId || enrollmentId : enrollmentId,
+    studentId: isStudentActor(actor) ? actor?.studentId || studentId : studentId,
     amount,
     itemDetails,
     customerDetails,

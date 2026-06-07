@@ -1,0 +1,3 @@
+export function createCertificate(data = {}) {
+ return { id: data.id ?? null, studentId: data.studentId ?? null, enrollmentId: data.enrollmentId ?? null, courseId: data.courseId ?? null, studentName: String(data.studentName ?? ''), courseName: String(data.courseName ?? ''), nis: String(data.nis ?? ''), issueDate: data.issueDate ?? null, fileUrl: String(data.fileUrl ?? ''), fileName: String(data.fileName ?? ''), mimeType: String(data.mimeType ?? 'application/pdf'), status: data.status ?? 'issued', createdAt: data.createdAt ?? new Date().toISOString(), updatedAt: data.updatedAt ?? new Date().toISOString() };
+}

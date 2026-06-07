@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { createAdminService } from './admin.service.js';
+import { createAdminServiceV2 } from './admin.service.v2.js';
 import { asyncHandler, ok } from '../../utils/http.js';
 import { requireAppRole } from '../../auth/session.js';
 
 const router = Router();
-const adminService = createAdminService();
+const adminService = createAdminServiceV2();
 
 router.use(requireAppRole('admin'));
 

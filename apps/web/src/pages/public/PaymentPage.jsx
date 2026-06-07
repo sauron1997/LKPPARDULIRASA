@@ -52,6 +52,7 @@ export default function PaymentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const paymentAccessToken = searchParams.get('token') || '';
+  const isLegacyPaymentLink = !paymentAccessToken;
 
   const { data: payment, isLoading: paymentLoading, error: paymentError, refetch: refetchPayment } = usePaymentByEnrollmentWithAccess(enrollmentId, paymentAccessToken);
   const { data: manualSettings } = usePaymentSettings();
@@ -73,6 +74,7 @@ export default function PaymentPage() {
   }, [paymentInfo.status]);
 
   const isTerminal = paymentInfo.status === 'paid' || paymentInfo.status === 'expired' || paymentInfo.status === 'failed';
+  const paymentErrorMessage = paymentError?.message || 'Data pembayaran tidak tersedia.';
 
   const handlePayNow = useCallback(() => {
     if (paymentInfo.redirectUrl) {
@@ -184,12 +186,21 @@ export default function PaymentPage() {
   if (paymentError) {
     return (
       <div className="page-wrapper">
-        <SEO title="Pembayaran" description="Pembayaran tidak ditemukan." />
+        <SEO
+          title={isLegacyPaymentLink ? 'Tautan Pembayaran Perlu Diperbarui' : 'Pembayaran tidak ditemukan'}
+          description="Pembayaran tidak dapat dimuat."
+        />
         <div className="container section">
           <div className="auth-card" style={{ textAlign: 'center', padding: '3rem' }}>
             <AlertTriangle size={48} style={{ margin: '0 auto 1rem', color: '#ef4444' }} />
-            <h2>Pembayaran Tidak Ditemukan</h2>
-            <p>{paymentError.message || 'Data pembayaran tidak tersedia.'}</p>
+            <h2>{isLegacyPaymentLink ? 'Tautan Pembayaran Perlu Diperbarui' : 'Pembayaran Tidak Ditemukan'}</h2>
+            <p>{paymentErrorMessage}</p>
+            {isLegacyPaymentLink ? (
+              <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Tautan lama tanpa token keamanan tidak lagi bisa dipakai untuk akses publik. Masuk ke dashboard siswa
+                atau gunakan tautan pembayaran terbaru dari admin.
+              </p>
+            ) : null}
             <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
               <button type="button" className="btn btn-primary" onClick={() => refetchPayment()}>
                 Coba Lagi
@@ -197,6 +208,11 @@ export default function PaymentPage() {
               <Link to="/dashboard" className="btn btn-outline">
                 Ke Dashboard
               </Link>
+              {isLegacyPaymentLink ? (
+                <Link to="/contact" className="btn btn-outline">
+                  Hubungi Admin
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>

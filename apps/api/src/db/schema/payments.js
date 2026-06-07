@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { integer, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 export const paymentTransactionStatusEnum = pgEnum('payment_transaction_status', ['pending', 'paid', 'expired', 'failed']);
@@ -7,7 +8,7 @@ export const payments = pgTable('payments', {
   enrollmentId: text('enrollment_id').notNull(),
   studentId: integer('student_id').notNull(),
   amount: integer('amount').notNull(),
-  publicAccessToken: text('public_access_token').notNull(),
+  publicAccessToken: text('public_access_token').default(sql`md5(random()::text || clock_timestamp()::text)`).notNull(),
   transactionId: text('transaction_id'),
   redirectUrl: text('redirect_url'),
   status: paymentTransactionStatusEnum('status').notNull().default('pending'),

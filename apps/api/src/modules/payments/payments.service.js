@@ -96,6 +96,14 @@ function hasPaymentAccess(payment, actor = null, accessToken = '') {
   return Boolean(accessToken) && String(payment.publicAccessToken || '') === String(accessToken);
 }
 
+function isManualPaymentInReview(payment) {
+  return payment?.paymentChannel === 'manual_transfer'
+    && payment?.status === 'pending'
+    && Boolean(payment?.manualSubmittedAt)
+    && Boolean(payment?.manualProofMediaId)
+    && !payment?.manualReviewedAt;
+}
+
 function generatePaymentId(payments) {
   const currentYear = new Date().getFullYear();
   const latestNumber = payments.reduce((highest, payment) => {
@@ -167,6 +175,28 @@ function buildManualPaymentItem(payment, lookup = {}) {
       paymentDate: enrollment.paymentDate,
       registrationDate: enrollment.registrationDate,
     } : null,
+  };
+}
+
+function buildPublicPaymentDto(payment) {
+  if (!payment) {
+    return null;
+  }
+
+  return {
+    id: payment.id,
+    enrollmentId: payment.enrollmentId,
+    amount: payment.amount,
+    status: payment.status,
+    paymentChannel: payment.paymentChannel,
+    paymentMethod: payment.paymentMethod,
+    redirectUrl: payment.redirectUrl,
+    expiryAt: payment.expiryAt,
+    paidAt: payment.paidAt,
+    manualProofUrl: payment.manualProofUrl,
+    manualSubmittedAt: payment.manualSubmittedAt,
+    manualReviewNote: payment.manualReviewNote,
+    manualReviewedAt: payment.manualReviewedAt,
   };
 }
 
@@ -389,6 +419,20 @@ export function createPaymentsService(options = {}) {
     return results[0] || null;
   }
 
+  async function getPaymentByEnrollmentAndAccessToken(enrollmentId, accessToken) {
+    const database = requireDb();
+    const results = await database
+      .select()
+      .from(paymentsTable)
+      .where(and(
+        eq(paymentsTable.enrollmentId, enrollmentId),
+        eq(paymentsTable.publicAccessToken, accessToken),
+      ))
+      .limit(1);
+
+    return results[0] || null;
+  }
+
   async function getAccessiblePayment(paymentId, access = {}) {
     const payment = await getPayment(paymentId);
     if (!payment) {
@@ -406,7 +450,10 @@ export function createPaymentsService(options = {}) {
   }
 
   async function getAccessiblePaymentByEnrollment(enrollmentId, access = {}) {
-    const payment = await getPaymentsByEnrollment(enrollmentId);
+    const accessToken = String(access.accessToken || '');
+    const payment = accessToken
+      ? await getPaymentByEnrollmentAndAccessToken(enrollmentId, accessToken)
+      : await getPaymentsByEnrollment(enrollmentId);
     if (!payment) {
       return null;
     }
@@ -418,7 +465,7 @@ export function createPaymentsService(options = {}) {
       'PAYMENT_ACCESS_FORBIDDEN',
     );
 
-    return payment;
+    return buildPublicPaymentDto(payment);
   }
 
   async function submitManualPaymentProof(paymentId, payload = {}) {
@@ -474,7 +521,7 @@ export function createPaymentsService(options = {}) {
         .where(eq(enrollmentsTable.id, payment.enrollmentId));
     });
 
-    return getPayment(payment.id);
+    return buildPublicPaymentDto(await getPayment(payment.id));
   }
 
   async function getManualPaymentProofAsset(paymentId, access = {}) {
@@ -534,9 +581,16 @@ export function createPaymentsService(options = {}) {
       return null;
     }
 
+    ensure(
+      isManualPaymentInReview(payment),
+      'Pembayaran manual ini tidak dalam status review yang dapat diverifikasi.',
+      409,
+      'MANUAL_PAYMENT_REVIEW_LOCKED',
+    );
+
     const now = new Date().toISOString();
     await database.transaction(async (tx) => {
-      await tx
+      const updatedPayments = await tx
         .update(paymentsTable)
         .set({
           status: 'paid',
@@ -549,7 +603,20 @@ export function createPaymentsService(options = {}) {
           manualReviewedAt: now,
           updatedAt: now,
         })
-        .where(eq(paymentsTable.id, payment.id));
+        .where(and(
+          eq(paymentsTable.id, payment.id),
+          eq(paymentsTable.paymentChannel, 'manual_transfer'),
+          eq(paymentsTable.status, 'pending'),
+          eq(paymentsTable.manualSubmittedAt, String(payment.manualSubmittedAt)),
+        ))
+        .returning({ id: paymentsTable.id });
+
+      ensure(
+        updatedPayments.length === 1,
+        'Pembayaran manual ini tidak lagi dalam status review yang dapat diverifikasi.',
+        409,
+        'MANUAL_PAYMENT_REVIEW_LOCKED',
+      );
 
       await tx
         .update(enrollmentsTable)
@@ -570,9 +637,16 @@ export function createPaymentsService(options = {}) {
       return null;
     }
 
+    ensure(
+      isManualPaymentInReview(payment),
+      'Pembayaran manual ini tidak dalam status review yang dapat ditolak.',
+      409,
+      'MANUAL_PAYMENT_REVIEW_LOCKED',
+    );
+
     const now = new Date().toISOString();
     await database.transaction(async (tx) => {
-      await tx
+      const updatedPayments = await tx
         .update(paymentsTable)
         .set({
           status: 'failed',
@@ -584,7 +658,20 @@ export function createPaymentsService(options = {}) {
           manualReviewedAt: now,
           updatedAt: now,
         })
-        .where(eq(paymentsTable.id, payment.id));
+        .where(and(
+          eq(paymentsTable.id, payment.id),
+          eq(paymentsTable.paymentChannel, 'manual_transfer'),
+          eq(paymentsTable.status, 'pending'),
+          eq(paymentsTable.manualSubmittedAt, String(payment.manualSubmittedAt)),
+        ))
+        .returning({ id: paymentsTable.id });
+
+      ensure(
+        updatedPayments.length === 1,
+        'Pembayaran manual ini tidak lagi dalam status review yang dapat ditolak.',
+        409,
+        'MANUAL_PAYMENT_REVIEW_LOCKED',
+      );
 
       await tx
         .update(enrollmentsTable)
