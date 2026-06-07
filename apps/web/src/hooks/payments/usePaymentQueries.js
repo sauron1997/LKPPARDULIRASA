@@ -53,9 +53,11 @@ export function useUploadPaymentProofMutation() {
   return useMutation({
     mutationFn: ({ paymentId, payload }) => uploadPaymentProof(paymentId, payload),
     onSuccess: async (data, variables) => {
+      const enrollmentId = variables.enrollmentId || data?.enrollmentId;
       const invalidations = [
         paymentQueryKeys.all,
-        paymentQueryKeys.byEnrollment(variables.enrollmentId || data?.enrollmentId, variables.accessToken),
+        enrollmentId ? paymentQueryKeys.byEnrollmentRoot(enrollmentId) : null,
+        enrollmentId ? paymentQueryKeys.byEnrollment(enrollmentId, variables.accessToken) : null,
         paymentQueryKeys.detail(variables.paymentId || data?.id),
         paymentQueryKeys.byStudent(data?.studentId),
         studentQueryKeys.dashboard(),
@@ -88,7 +90,7 @@ function buildManualPaymentInvalidations() {
 function buildManualPaymentRecordInvalidations(payment) {
   return [
     payment?.id ? paymentQueryKeys.detail(payment.id) : null,
-    payment?.enrollmentId ? paymentQueryKeys.byEnrollment(payment.enrollmentId) : null,
+    payment?.enrollmentId ? paymentQueryKeys.byEnrollmentRoot(payment.enrollmentId) : null,
     payment?.studentId ? paymentQueryKeys.byStudent(payment.studentId) : null,
   ].filter(Boolean);
 }
