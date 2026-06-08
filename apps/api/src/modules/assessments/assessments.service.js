@@ -1,4 +1,7 @@
-import { createAdminService, ensure, getStudentPortal } from '../admin/admin.service.js';
+﻿import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { getStudentPortal } from '../student/student-portal.js';
+import { createCertificatesService } from './certificates.service.js';
 import {
   canUseDatabaseAssessmentDefinitions,
   createPersistedAssessmentDefinition,
@@ -89,9 +92,9 @@ function normalizeSubmissionAttachment(payload = {}, existingSubmission = null) 
 }
 
 export function createAssessmentsService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
+  const certificatesService = createCertificatesService(options);
 
   return {
     async listDefinitions(filters = {}) {
@@ -344,15 +347,15 @@ export function createAssessmentsService(options = {}) {
     },
 
     async listCertificates(filters = {}) {
-      return adminService.listCertificates(filters);
+      return certificatesService.listCertificates(filters);
     },
 
     async upsertCertificate(studentId, payload = {}) {
-      return adminService.upsertCertificate(studentId, payload);
+      return certificatesService.upsertCertificate(studentId, payload);
     },
 
     async deleteCertificate(certificateId) {
-      const removed = await adminService.deleteCertificate(certificateId);
+      const removed = await certificatesService.deleteCertificate(certificateId);
       ensure(removed, 'Sertifikat tidak ditemukan.', 404, 'CERTIFICATE_NOT_FOUND');
       return removed;
     },

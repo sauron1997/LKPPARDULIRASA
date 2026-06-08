@@ -1,4 +1,6 @@
-import { createAdminService, ensure } from '../admin/admin.service.js';
+import { createBackendContext, rebuildMediaLibrary } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { compareByUpdatedDesc, slugify } from '@lkp-parduli-rasa/domain/use-cases';
 import {
   canUseDatabasePersistence,
   createPersistedAccreditation,
@@ -15,7 +17,7 @@ import {
   updatePersistedProfile,
 } from './content.persistence.js';
 
-function createMemoryContentService(adminService, context) {
+function createMemoryContentService(context) {
   const { repositories } = context;
 
   return {
@@ -40,7 +42,7 @@ function createMemoryContentService(adminService, context) {
           const haystack = `${post.title} ${post.summary} ${post.content}`.toLowerCase();
           return haystack.includes(search);
         })
-        .sort(adminService.helpers.compareByUpdatedDesc);
+        .sort(compareByUpdatedDesc);
     },
 
     getBlogPost(postId) {
@@ -60,7 +62,7 @@ function createMemoryContentService(adminService, context) {
 
       const post = {
         id: payload.id || nextId,
-        slug: payload.slug || adminService.helpers.slugify(payload.title),
+        slug: payload.slug || slugify(payload.title),
         title: String(payload.title).trim(),
         summary: payload.summary || '',
         content: payload.content || '',
@@ -75,7 +77,7 @@ function createMemoryContentService(adminService, context) {
       };
 
       repositories.blogPosts.insert(post);
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return post;
     },
 
@@ -97,19 +99,19 @@ function createMemoryContentService(adminService, context) {
         updatedAt: context.now(),
       }));
 
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return post;
     },
 
     deleteBlogPost(postId) {
       const removed = repositories.blogPosts.remove(postId);
       ensure(removed, 'Artikel blog tidak ditemukan.', 404, 'BLOG_POST_NOT_FOUND');
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return removed;
     },
 
     listAccreditations() {
-      return repositories.accreditations.list().sort(adminService.helpers.compareByUpdatedDesc);
+      return repositories.accreditations.list().sort(compareByUpdatedDesc);
     },
 
     getAccreditation(itemId) {
@@ -137,7 +139,7 @@ function createMemoryContentService(adminService, context) {
       };
 
       repositories.accreditations.insert(record);
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return record;
     },
 
@@ -157,23 +159,22 @@ function createMemoryContentService(adminService, context) {
         updatedAt: context.now(),
       }));
 
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return record;
     },
 
     deleteAccreditation(itemId) {
       const removed = repositories.accreditations.remove(itemId);
       ensure(removed, 'Dokumen akreditasi tidak ditemukan.', 404, 'ACCREDITATION_NOT_FOUND');
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return removed;
     },
   };
 }
 
 export function createContentService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
-  const memoryService = createMemoryContentService(adminService, context);
+  const context = createBackendContext(options);
+  const memoryService = createMemoryContentService(context);
 
   if (!canUseDatabasePersistence()) {
     return memoryService;

@@ -1,3 +1,14 @@
+/**
+ * @deprecated LEGACY MODULE — Phase 8 soft decommission.
+ *
+ * This file is the original1736-line monolithic admin service.
+ * All direct imports have been routed through:
+ *   - apps/api/src/runtime/backend-context.js (for createBackendContext)
+ *   - apps/api/src/runtime/legacy-bridge.js (for createAdminService, ensure, etc.)
+ *
+ * DO NOT add new code here. Use domain use cases instead.
+ * This file will be removed in a future cleanup phase.
+ */
 import {
   getDefaultAccreditations,
   getDefaultAccounts,

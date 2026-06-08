@@ -1,4 +1,6 @@
-import { createAdminService, ensure } from '../admin/admin.service.js';
+import { createBackendContext, rebuildMediaLibrary } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { compareByUpdatedDesc } from '@lkp-parduli-rasa/domain/use-cases';
 import { requireDb } from '../../db/client.js';
 import { mediaAssets } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
@@ -42,7 +44,7 @@ function normalizeGalleryMedia(payload = {}, fallbackId) {
   return [];
 }
 
-function createMemoryMediaService(adminService, context) {
+function createMemoryMediaService(context) {
   const { repositories } = context;
 
   return {
@@ -76,7 +78,6 @@ function createMemoryMediaService(adminService, context) {
       repositories.mediaLibrary.insert(record);
       return record;
     },
-
     updateLibraryItem(mediaId, payload = {}) {
       const existing = repositories.mediaLibrary.getById(mediaId);
       ensure(existing, 'Media tidak ditemukan.', 404, 'MEDIA_NOT_FOUND');
@@ -98,7 +99,7 @@ function createMemoryMediaService(adminService, context) {
     },
 
     listGalleryItems() {
-      return repositories.galleryItems.list().sort(adminService.helpers.compareByUpdatedDesc);
+      return repositories.galleryItems.list().sort(compareByUpdatedDesc);
     },
 
     getGalleryItem(itemId) {
@@ -126,10 +127,9 @@ function createMemoryMediaService(adminService, context) {
       };
 
       repositories.galleryItems.insert(record);
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return record;
     },
-
     updateGalleryItem(itemId, payload = {}) {
       this.getGalleryItem(itemId);
 
@@ -150,23 +150,21 @@ function createMemoryMediaService(adminService, context) {
         };
       });
 
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return record;
     },
 
     deleteGalleryItem(itemId) {
       const removed = repositories.galleryItems.remove(itemId);
       ensure(removed, 'Item galeri tidak ditemukan.', 404, 'GALLERY_ITEM_NOT_FOUND');
-      adminService.helpers.rebuildMediaLibrary();
+      rebuildMediaLibrary({ context });
       return removed;
     },
   };
 }
-
 export function createMediaService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
-  const memoryService = createMemoryMediaService(adminService, context);
+  const context = createBackendContext(options);
+  const memoryService = createMemoryMediaService(context);
 
   if (!canUseDatabasePersistence()) {
     return memoryService;

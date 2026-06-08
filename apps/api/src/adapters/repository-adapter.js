@@ -80,6 +80,17 @@ export function createRepoAdapter(backendContext) {
 
  const certificateRepo = wrapRepo(repositories.certificates, {}, { studentId: true, courseId: true });
 
+ const assessmentRepo = {
+ listDefinitions: () => repositories.assessmentDefinitions.raw(),
+ listProgress: () => repositories.assessmentProgress.raw(),
+ listSubmissions: () => repositories.assessmentSubmissions.raw(),
+ };
+
+ const messageRepo = {
+ listPublic: () => repositories.publicMessages.raw(),
+ listStudent: () => repositories.studentMessages.raw(),
+ };
+
  const blogRepo = wrapRepo(repositories.blogPosts, {}, {});
  const galleryRepo = wrapRepo(repositories.galleryItems, {}, {});
  const profileRepo = { get: () => repositories.profile.get(), update: (data) => repositories.profile.update(data) };
@@ -107,6 +118,8 @@ export function createRepoAdapter(backendContext) {
  scheduleAssignmentRepo,
  attendanceRepo,
  certificateRepo,
+ assessmentRepo,
+ messageRepo,
  blogRepo,
  galleryRepo,
  profileRepo,

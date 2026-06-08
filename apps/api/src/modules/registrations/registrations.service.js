@@ -1,5 +1,6 @@
-import { eq } from 'drizzle-orm';
-import { createAdminService, ensure } from '../admin/admin.service.js';
+﻿import { eq } from 'drizzle-orm';
+import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
 import { createPaymentsService } from '../payments/payments.service.js';
 import {
   canUseDatabaseAuthPersistence,
@@ -45,8 +46,7 @@ function parsePriceValue(priceLabel = '') {
 }
 
 export function createRegistrationsService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
 
   async function createPersistedRegistrationArtifacts(student, enrollment) {

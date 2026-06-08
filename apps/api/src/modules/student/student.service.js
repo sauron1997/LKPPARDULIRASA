@@ -1,4 +1,8 @@
-import { createAdminService, ensure, getStudentPortal } from '../admin/admin.service.js';
+﻿import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { getStudentPortal } from './student-portal.js';
+import { createStudentScheduleService } from './student-schedule.service.js';
+import { normalizeThread, compareByUpdatedDesc } from '../messages/thread-utils.js';
 import {
   canUseDatabaseAuthPersistence,
   findPersistedIdentityByAuthUserId,
@@ -36,9 +40,9 @@ async function getPersistedProfileBundle(reference = {}) {
 }
 
 export function createStudentService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
+  const scheduleService = createStudentScheduleService(options);
 
   return {
     async getDashboard(reference = {}) {
@@ -49,7 +53,7 @@ export function createStudentService(options = {}) {
       };
 
       try {
-        scheduleBundle = await adminService.getStudentSchedules(reference);
+        scheduleBundle = await scheduleService.getStudentSchedules(reference);
       } catch (error) {
         if (error.status !== 403) {
           throw error;
@@ -182,17 +186,17 @@ export function createStudentService(options = {}) {
 
     async listSchedules(reference = {}, filters = {}) {
       await requirePortal(reference, { context });
-      return adminService.getStudentSchedules(reference, filters);
+      return scheduleService.getStudentSchedules(reference, filters);
     },
 
     async listAttendance(reference = {}, filters = {}) {
       await requirePortal(reference, { context });
-      return adminService.getStudentAttendance(reference, filters);
+      return scheduleService.getStudentAttendance(reference, filters);
     },
 
     async checkInSchedule(reference = {}, scheduleId, payload = {}) {
       await requirePortal(reference, { context });
-      return adminService.checkInStudentSchedule(reference, scheduleId, payload);
+      return scheduleService.checkInStudentSchedule(reference, scheduleId, payload);
     },
 
     async listMessages(reference = {}) {
@@ -201,11 +205,11 @@ export function createStudentService(options = {}) {
       if (canUseDatabasePersistence()) {
         const threads = await listPersistedMessageThreads('student', { studentId: portal.student.id });
         return threads
-          .map((thread) => adminService.normalizeThread(thread))
-          .sort(adminService.helpers.compareByUpdatedDesc);
+          .map((thread) => normalizeThread(thread))
+          .sort(compareByUpdatedDesc);
       }
 
-      return portal.threads.map((thread) => adminService.normalizeThread(thread));
+      return portal.threads.map((thread) => normalizeThread(thread));
     },
 
     async createMessageThread(reference = {}, payload = {}) {
@@ -223,7 +227,7 @@ export function createStudentService(options = {}) {
           body: String(payload.body).trim(),
         }, createdAt);
 
-        return adminService.normalizeThread(thread);
+        return normalizeThread(thread);
       }
 
       const nextThread = {
@@ -259,7 +263,7 @@ export function createStudentService(options = {}) {
       };
 
       repositories.studentMessages.insert(nextThread);
-      return adminService.normalizeThread(nextThread);
+      return normalizeThread(nextThread);
     },
 
     async replyToThread(reference = {}, threadId, payload = {}) {
@@ -273,7 +277,7 @@ export function createStudentService(options = {}) {
         }, createdAt);
 
         ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
-        return adminService.normalizeThread(thread);
+        return normalizeThread(thread);
       }
 
       const thread = repositories.studentMessages.raw().find((item) => (
@@ -292,7 +296,7 @@ export function createStudentService(options = {}) {
 
       const messages = Array.isArray(thread.messages)
         ? thread.messages
-        : adminService.normalizeThread(thread).messages;
+        : normalizeThread(thread).messages;
 
       repositories.studentMessages.update(thread.id, (currentThread) => ({
         ...currentThread,
@@ -307,7 +311,7 @@ export function createStudentService(options = {}) {
       }));
 
       const updatedThread = repositories.studentMessages.raw().find((item) => String(item.id) === String(threadId)) || null;
-      return adminService.normalizeThread(updatedThread);
+      return normalizeThread(updatedThread);
     },
 
     async getCertificate(reference = {}) {

@@ -1,4 +1,6 @@
-import { createAdminService, ensure } from '../admin/admin.service.js';
+import { createBackendContext, rebuildMediaLibrary } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { slugify, formatCurrency } from '@lkp-parduli-rasa/domain/use-cases';
 import {
   canUseDatabaseCoursePersistence,
   createPersistedCourse,
@@ -13,8 +15,7 @@ import {
 } from './courses.persistence.js';
 
 export function createCoursesService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
 
   function hydrateCourse(course) {
@@ -64,7 +65,7 @@ export function createCoursesService(options = {}) {
 
       if (canUseDatabaseCoursePersistence()) {
         const course = await createPersistedCourse(payload, {
-          formatCurrency: adminService.helpers.formatCurrency,
+          formatCurrency: formatCurrency,
         });
         ensure(course, 'Program kursus gagal dibuat.', 500, 'COURSE_CREATE_FAILED');
         return course;
@@ -80,7 +81,7 @@ export function createCoursesService(options = {}) {
         description: payload.description || '',
         icon: payload.icon || 'FileText',
         priceValue: Number(payload.priceValue || 0),
-        priceLabel: payload.priceLabel || adminService.helpers.formatCurrency(payload.priceValue || 0),
+        priceLabel: payload.priceLabel || formatCurrency(payload.priceValue || 0),
         duration: payload.duration || '',
         level: payload.level || 'Umum',
         brochureName: payload.brochureName || '',
@@ -97,7 +98,7 @@ export function createCoursesService(options = {}) {
     async updateCourse(courseId, payload = {}) {
       if (canUseDatabaseCoursePersistence()) {
         const course = await updatePersistedCourse(courseId, payload, {
-          formatCurrency: adminService.helpers.formatCurrency,
+          formatCurrency: formatCurrency,
         });
         ensure(course, 'Program kursus tidak ditemukan.', 404, 'COURSE_NOT_FOUND');
         return course;

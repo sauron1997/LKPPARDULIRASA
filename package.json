@@ -28,7 +28,13 @@
     "db:seed": "npm --workspace @lkp-parduli-rasa/api run db:seed",
     "db:studio": "drizzle-kit studio",
     "auth:generate": "npx @better-auth/cli@latest generate",
-    "auth:secret": "npx @better-auth/cli@latest secret"
+    "auth:secret": "npx @better-auth/cli@latest secret",
+    "test": "node --test apps/api/tests/**/*.test.mjs packages/domain/tests/**/*.test.mjs",
+    "test:api": "node --test apps/api/tests/**/*.test.mjs",
+    "test:domain": "node --test packages/domain/tests/**/*.test.mjs",
+    "test:watch": "node --test --watch apps/api/tests/**/*.test.mjs",
+    "verify:modules": "node scripts/verify-modules.mjs",
+    "verify:architecture": "node scripts/verify-architecture.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

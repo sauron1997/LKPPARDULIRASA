@@ -1,4 +1,7 @@
-import { createAdminService, ensure } from '../admin/admin.service.js';
+﻿import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
+import { compareByUpdatedDesc } from '@lkp-parduli-rasa/domain/use-cases';
+import { normalizeThreadMessages } from '@lkp-parduli-rasa/domain/domain-relations';
 import { createPublicService } from '../public/public.service.js';
 import { createStudentService } from '../student/student.service.js';
 import {
@@ -104,11 +107,23 @@ function normalizeReplyAttachment(payload = {}) {
   };
 }
 
+function normalizeThread(thread) {
+  const normalized = normalizeThreadMessages(thread);
+  return {
+    ...thread,
+    body: normalized.body,
+    messages: normalized.messages,
+    responses: normalized.responses,
+    updatedAt: thread.updatedAt || normalized.lastMessageAt,
+    lastMessageAt: thread.lastMessageAt || normalized.lastMessageAt,
+    lastMessagePreview: thread.lastMessagePreview || normalized.messages.at(-1)?.body || normalized.body,
+  };
+}
+
 export function createMessagesService(options = {}) {
-  const adminService = createAdminService(options);
-  const publicService = createPublicService({ context: adminService.getContext() });
-  const studentService = createStudentService({ context: adminService.getContext() });
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
+  const publicService = createPublicService({ context });
+  const studentService = createStudentService({ context });
   const { repositories } = context;
   const persistenceMode = canUseDatabasePersistence() ? 'database' : 'memory';
 
@@ -132,7 +147,7 @@ export function createMessagesService(options = {}) {
         const search = String(filters.search || '').trim().toLowerCase();
         const threads = (await listPersistedThreads(channel, filters))
           .map((thread) => ({
-            ...adminService.normalizeThread(thread),
+            ...normalizeThread(thread),
             persistenceMode,
           }))
           .filter((thread) => {
@@ -140,7 +155,7 @@ export function createMessagesService(options = {}) {
             const haystack = `${thread.senderName || ''} ${thread.senderEmail || ''} ${thread.subject || ''} ${thread.body || ''}`.toLowerCase();
             return haystack.includes(search);
           })
-          .sort(adminService.helpers.compareByUpdatedDesc);
+          .sort(compareByUpdatedDesc);
 
         return withPersistenceMode(threads, 'threads');
       }
@@ -149,13 +164,13 @@ export function createMessagesService(options = {}) {
       const search = String(filters.search || '').trim().toLowerCase();
 
       const threads = repo.list()
-        .map((thread) => adminService.normalizeThread(thread))
+        .map((thread) => normalizeThread(thread))
         .filter((thread) => {
           if (!search) return true;
           const haystack = `${thread.senderName || ''} ${thread.senderEmail || ''} ${thread.subject || ''} ${thread.body || ''}`.toLowerCase();
           return haystack.includes(search);
         })
-        .sort(adminService.helpers.compareByUpdatedDesc)
+        .sort(compareByUpdatedDesc)
         .map((thread) => ({
           ...thread,
           persistenceMode,
@@ -169,7 +184,7 @@ export function createMessagesService(options = {}) {
         const thread = await getPersistedThread(channel, threadId);
         ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
         return withPersistenceMode({
-          ...adminService.normalizeThread(thread),
+          ...normalizeThread(thread),
           persistenceMode,
         }, 'thread');
       }
@@ -178,7 +193,7 @@ export function createMessagesService(options = {}) {
       const thread = repo.getById(threadId);
       ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
       return withPersistenceMode({
-        ...adminService.normalizeThread(thread),
+        ...normalizeThread(thread),
         persistenceMode,
       }, 'thread');
     },
@@ -203,7 +218,7 @@ export function createMessagesService(options = {}) {
 
         ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
         return {
-          ...adminService.normalizeThread(thread),
+          ...normalizeThread(thread),
           persistenceMode,
         };
       }
@@ -230,7 +245,7 @@ export function createMessagesService(options = {}) {
         fileSizeLabel: attachment?.sizeLabel || '',
       };
 
-      const normalized = adminService.normalizeThread(thread);
+      const normalized = normalizeThread(thread);
       repo.update(threadId, (current) => ({
         ...current,
         status: authorRole === 'admin' ? 'replied' : 'unread',
@@ -259,7 +274,7 @@ export function createMessagesService(options = {}) {
 
       const updatedThread = repo.getById(threadId);
       return {
-        ...adminService.normalizeThread(updatedThread),
+        ...normalizeThread(updatedThread),
         persistenceMode,
       };
     },
@@ -271,7 +286,7 @@ export function createMessagesService(options = {}) {
         const thread = await updatePersistedThreadStatus(channel, threadId, { status: payload.status }, context.now());
         ensure(thread, 'Thread pesan tidak ditemukan.', 404, 'THREAD_NOT_FOUND');
         return {
-          ...adminService.normalizeThread(thread),
+          ...normalizeThread(thread),
           persistenceMode,
         };
       }
@@ -290,7 +305,7 @@ export function createMessagesService(options = {}) {
 
       const updatedThread = repo.getById(threadId);
       return {
-        ...adminService.normalizeThread(updatedThread),
+        ...normalizeThread(updatedThread),
         persistenceMode,
       };
     },

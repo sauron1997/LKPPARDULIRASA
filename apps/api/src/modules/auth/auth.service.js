@@ -1,4 +1,9 @@
-import { createAdminService, createServiceError, ensure } from '../admin/admin.service.js';
+﻿/**
+ * Auth Service — zero dependency on legacy admin.service.js (Phase 8migration).
+ */
+import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure, createServiceError } from '../../runtime/errors.js';
+import { normalizeLoginIdentifier, getAccountIdentifiers, buildSessionUser, findCourseByReference, findEnrollmentByReference } from '@lkp-parduli-rasa/domain/domain-relations';
 
 function createSessionToken() {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -11,90 +16,79 @@ export function extractBearerToken(input) {
 }
 
 export function createAuthService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
+
+  function findAccountByIdentifier(identifier) {
+    const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+    const students = repositories.students.raw();
+    return repositories.accounts.raw().find((account) => {
+      if (String(account.status || 'active').toLowerCase() !== 'active') return false;
+      const student = students.find((s) => String(s.id) === String(account.studentId)) || null;
+      const identifiers = getAccountIdentifiers(account, student);
+      return identifiers.includes(normalizedIdentifier);
+    }) || null;
+  }
+
+  function buildSessionUserLocal(account) {
+    if (!account) return null;
+    const student = repositories.students.raw().find((item) => (
+      String(item.id) === String(account.studentId) || String(item.accountId) === String(account.id)
+    )) || null;
+    const enrollment = findEnrollmentByReference(repositories.enrollments.raw(), {
+      enrollmentId: account.enrollmentId || student?.enrollmentId,
+      studentId: account.studentId || student?.id,
+      courseId: account.courseId || student?.courseId,
+      program: student?.program,
+    }, repositories.courses.raw());
+    const course = findCourseByReference(repositories.courses.raw(), {
+      courseId: enrollment?.courseId || account.courseId || student?.courseId,
+      program: student?.program,
+    });
+    return buildSessionUser({ account, student, enrollment, course });
+  }
 
   return {
     authenticate(payload = {}) {
-      ensure(payload.identifier, 'Identifier login wajib diisi.', 400, 'IDENTIFIER_REQUIRED');
+      ensure(payload.identifier, 'Identifier login wajib diisi.',400, 'IDENTIFIER_REQUIRED');
       ensure(payload.password, 'Password wajib diisi.', 400, 'PASSWORD_REQUIRED');
 
-      const account = adminService.findAccountByIdentifier(payload.identifier);
+      const account = findAccountByIdentifier(payload.identifier);
       ensure(account, 'Email/NIS/username atau password salah.', 401, 'INVALID_CREDENTIALS');
       ensure(String(account.password || '') === String(payload.password || ''), 'Email/NIS/username atau password salah.', 401, 'INVALID_CREDENTIALS');
 
-      const user = adminService.buildSessionUser(account);
-      ensure(user, 'Akun ditemukan tetapi data siswa belum lengkap.', 409, 'ACCOUNT_DATA_INCOMPLETE');
-
-      return {
-        account,
-        user,
-      };
-    },
-
-    login(payload = {}) {
-      const { account, user } = this.authenticate(payload);
-
-      const createdAt = context.now();
       const token = createSessionToken();
+      const sessionUser = buildSessionUserLocal(account);
+
       repositories.sessions.insert({
         id: token,
         token,
         accountId: account.id,
-        userId: user.id,
-        role: user.role,
-        createdAt,
-        updatedAt: createdAt,
-        meta: payload.meta || {},
-      });
+        studentId: account.studentId,
+        role: account.role || 'student',
+        createdAt: context.now(),});
 
-      return {
-        token,
-        user,
-      };
+      return { token, user: sessionUser };
     },
 
-    resolveSession(token) {
-      const normalizedToken = extractBearerToken(token);
-      ensure(normalizedToken, 'Token sesi belum dikirim.', 401, 'TOKEN_REQUIRED');
-
-      const session = repositories.sessions.raw().find((item) => String(item.token) === String(normalizedToken)) || null;
-      ensure(session, 'Sesi login tidak ditemukan.', 401, 'SESSION_NOT_FOUND');
-
-      const account = repositories.accounts.raw().find((item) => String(item.id) === String(session.accountId)) || null;
-      ensure(account, 'Akun sesi tidak ditemukan.', 401, 'ACCOUNT_NOT_FOUND');
-
-      const user = adminService.buildSessionUser(account);
-      ensure(user, 'Data user sesi tidak lengkap.', 409, 'SESSION_USER_INCOMPLETE');
-
-      repositories.sessions.update(session.id, (item) => ({
-        ...item,
-        updatedAt: context.now(),
-      }));
-
-      return {
-        token: normalizedToken,
-        user,
-      };
+    validateSession(token) {
+      if (!token) return null;
+      const session = repositories.sessions.raw().find((s) => String(s.token) === String(token)) || null;
+      if (!session) return null;
+      const account = repositories.accounts.raw().find((a) => String(a.id) === String(session.accountId)) || null;
+      if (!account) return null;
+      return buildSessionUserLocal(account);
     },
 
     logout(token) {
-      const normalizedToken = extractBearerToken(token);
-      ensure(normalizedToken, 'Token sesi belum dikirim.', 400, 'TOKEN_REQUIRED');
-      const removed = repositories.sessions.remove(normalizedToken);
-      ensure(removed, 'Sesi login tidak ditemukan.', 404, 'SESSION_NOT_FOUND');
-      return {
-        success: true,
-      };
+      if (!token) return false;
+      const session = repositories.sessions.raw().find((s) => String(s.token) === String(token)) || null;
+      if (session) repositories.sessions.remove(session.id);
+      return Boolean(session);
     },
 
-    requireSession(token) {
-      try {
-        return this.resolveSession(token);
-      } catch (error) {
-        throw createServiceError(error.status || 401, error.message, error.code || 'UNAUTHORIZED', error.details);
-      }
+    getContext() {
+      return context;
     },
   };
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+﻿import { and, desc, eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { paymentConfig } from '../../config/payment.js';
 import { requireDb } from '../../db/client.js';
@@ -10,7 +10,8 @@ import {
   students as studentsTable,
 } from '../../db/schema/index.js';
 import { createShortId } from '../../utils/ids.js';
-import { createAdminService, ensure } from '../admin/admin.service.js';
+import { createBackendContext } from '../../runtime/backend-context.js';
+import { ensure } from '../../runtime/errors.js';
 import { persistDataUrlMediaAsset, resolveStoredMediaPath } from '../media/media.storage.js';
 
 const MANUAL_PROOF_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -201,8 +202,7 @@ function buildPublicPaymentDto(payment) {
 }
 
 export function createPaymentsService(options = {}) {
-  const adminService = createAdminService(options);
-  const context = adminService.getContext();
+  const context = createBackendContext(options);
   const { repositories } = context;
 
   async function createPaymentTransaction({ enrollmentId, studentId, amount, itemDetails, customerDetails }) {

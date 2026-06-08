@@ -1,0 +1,10 @@
+export { StudentRepositoryContract } from './student.repository.js';
+export { CourseRepositoryContract } from './course.repository.js';
+export { EnrollmentRepositoryContract } from './enrollment.repository.js';
+export { ScheduleRepositoryContract } from './schedule.repository.js';
+export { AttendanceRepositoryContract } from './attendance.repository.js';
+export { CertificateRepositoryContract } from './certificate.repository.js';
+export { AssessmentRepositoryContract } from './assessment.repository.js';
+export { MessageRepositoryContract } from './message.repository.js';
+export { ContentRepositoryContract } from './content.repository.js';
+export { MediaRepositoryContract } from './media.repository.js';
