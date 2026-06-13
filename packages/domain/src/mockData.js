@@ -267,10 +267,10 @@ export const profileData = {
 };
 
 export const stats = [
-  { label: 'Alumni', value: 500, suffix: '+' },
+  { label: 'Alumni', value: 5000, suffix: '+' },
   { label: 'Program Kursus', value: 6, suffix: '' },
-  { label: 'Tahun Berdiri', value: 10, suffix: '+' },
-  { label: 'Pengajar', value: 15, suffix: '+' }
+  { label: 'Tahun Berdiri', value: 20, suffix: '+' },
+  { label: 'Pengajar', value: 10, suffix: '+' }
 ];
 
 export const accounts = [

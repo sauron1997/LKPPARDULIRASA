@@ -1399,9 +1399,9 @@ export function getDefaultProfile() {
     address: profileData.address || '',
     phone: profileData.phone || '',
     email: profileData.email || '',
-    foundedYear: profileData.foundedYear || 2015,
-    teacherCount: profileData.teacherCount || teacherStat?.value || 15,
-    alumniCount: profileData.alumniCount || alumniStat?.value || 500,
+    foundedYear: profileData.foundedYear || 2006,
+    teacherCount: profileData.teacherCount || teacherStat?.value || 10,
+    alumniCount: profileData.alumniCount || alumniStat?.value || 5000,
     socialMedia: {
       facebook: {
         url: profileData.socialMedia?.facebook || '',
