@@ -92,36 +92,65 @@ export const env = Object.freeze({
   betterAuthSecret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || 'better-auth-secret-12345678901234567890',
   betterAuthUrl: process.env.BETTER_AUTH_URL || `http://${publicHost}:${port}${authBasePath}`,
   uploadsDir: String(process.env.UPLOADS_DIR || '').trim(),
+
+  // Payment gateway
+  midtransServerKey: process.env.MIDTRANS_SERVER_KEY || '',
+  midtransClientKey: process.env.MIDTRANS_CLIENT_KEY || '',
+  midtransIsProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+  webhookBaseUrl: process.env.WEBHOOK_BASE_URL || '',
+  paymentMockMode: !process.env.MIDTRANS_SERVER_KEY,
 });
 
+/**
+ * Validate environment configuration.
+ * In production mode, throws if critical vars are missing/invalid.
+ * Returns { valid, errors } for programmatic use.
+ */
+export function validateEnvironment(options = {}) {
+  const strict = options.strict ?? env.isProduction;
+  const errors = [];
+
+  if (strict) {
+    if (!env.databaseUrl) {
+      errors.push('DATABASE_URL is required in production.');
+    }
+
+    if (!env.clientOrigin || isLocalUrl(env.clientOrigin)) {
+      errors.push('CLIENT_ORIGIN must point to the production domain.');
+    }
+
+    if (!env.corsOrigins.length || env.corsOrigins.some((origin) => isLocalUrl(origin))) {
+      errors.push('CORS_ORIGINS must list the production origin.');
+    }
+
+    if (!env.betterAuthUrl || isLocalUrl(env.betterAuthUrl)) {
+      errors.push('BETTER_AUTH_URL must point to the production domain.');
+    }
+
+    if (isPlaceholderSecret(env.betterAuthSecret)) {
+      errors.push('BETTER_AUTH_SECRET must be replaced before production.');
+    }
+
+    if (!env.uploadsDir) {
+      errors.push('UPLOADS_DIR must be configured to a writable directory in production.');
+    }
+
+    if (!env.midtransServerKey) {
+      errors.push('MIDTRANS_SERVER_KEY is required in production for payment processing.');
+    }
+
+    if (!env.webhookBaseUrl || isLocalUrl(env.webhookBaseUrl)) {
+      errors.push('WEBHOOK_BASE_URL must point to a publicly accessible URL in production.');
+    }
+  }
+
+  return { valid: errors.length === 0, errors, mode: strict ? 'production' : 'development' };
+}
+
+// Auto-validate on import in production mode
 if (env.isProduction) {
-  const validationErrors = [];
-
-  if (!env.databaseUrl) {
-    validationErrors.push('DATABASE_URL is required in production.');
-  }
-
-  if (!env.clientOrigin || isLocalUrl(env.clientOrigin)) {
-    validationErrors.push('CLIENT_ORIGIN must point to the production domain.');
-  }
-
-  if (!env.corsOrigins.length || env.corsOrigins.some((origin) => isLocalUrl(origin))) {
-    validationErrors.push('CORS_ORIGINS must list the production origin.');
-  }
-
-  if (!env.betterAuthUrl || isLocalUrl(env.betterAuthUrl)) {
-    validationErrors.push('BETTER_AUTH_URL must point to the production domain.');
-  }
-
-  if (isPlaceholderSecret(env.betterAuthSecret)) {
-    validationErrors.push('BETTER_AUTH_SECRET must be replaced before production.');
-  }
-
-  if (!env.uploadsDir) {
-    validationErrors.push('UPLOADS_DIR must be configured to a writable directory in production.');
-  }
-
-  if (validationErrors.length > 0) {
-    throw new Error(`Invalid production environment:\n- ${validationErrors.join('\n- ')}`);
+  const { valid, errors } = validateEnvironment({ strict: true });
+  if (!valid) {
+    throw new Error(`Invalid production environment:\n- ${errors.join('\n- ')}`);
   }
 }

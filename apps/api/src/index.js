@@ -1,12 +1,7 @@
 import { env } from './config/env.js';
 import { startServer } from './server.js';
 
-// Production guard: Midtrans config wajib diisi di production
-if (env.isProduction && !process.env.MIDTRANS_SERVER_KEY) {
-  console.error('FATAL: MIDTRANS_SERVER_KEY is required in production. Sistem akan berjalan di Mock Mode (tidak aman).');
-  console.error('Set MIDTRANS_SERVER_KEY dan MIDTRANS_CLIENT_KEY di environment variables.');
-  process.exit(1);
-}
+// Note: production env validation is handled automatically by config/env.js on import.
 
 try {
   const { url } = await startServer();

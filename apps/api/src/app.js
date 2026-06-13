@@ -6,6 +6,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { ok, sendError } from './utils/http.js';
+import healthRouter from './modules/health/health.routes.js';
 
 const defaultRouteModules = [
   {
@@ -91,17 +92,9 @@ export async function createApp(options = {}) {
     credentials: true,
   }));
 
-  app.get('/health', (req, res) => ok(res, {
-    status: 'ok',
-    service: 'server',
-    uptime: process.uptime(),
-  }));
-
-  app.get(`${env.apiBasePath}/health`, (req, res) => ok(res, {
-    status: 'ok',
-    service: 'api',
-    uptime: process.uptime(),
-  }));
+  // Health, readiness, and diagnostics endpoints
+  app.use('/', healthRouter);
+  app.use(env.apiBasePath, healthRouter);
 
   mountAuthHandler(app, authHandler);
 
