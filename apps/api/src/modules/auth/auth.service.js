@@ -68,7 +68,11 @@ export function createAuthService(options = {}) {
         role: account.role || 'student',
         createdAt: context.now(),});
 
-      return { token, user: sessionUser };
+      return { token, account, user: sessionUser };
+    },
+
+    login(payload = {}) {
+      return this.authenticate(payload);
     },
 
     validateSession(token) {
@@ -78,6 +82,17 @@ export function createAuthService(options = {}) {
       const account = repositories.accounts.raw().find((a) => String(a.id) === String(session.accountId)) || null;
       if (!account) return null;
       return buildSessionUserLocal(account);
+    },
+
+    requireSession(token) {
+      const user = this.validateSession(token);
+      if (!user) {
+        throw Object.assign(new Error('Session tidak valid atau sudah kedaluwarsa.'), {
+          statusCode: 401,
+          code: 'INVALID_SESSION',
+        });
+      }
+      return { token, user };
     },
 
     logout(token) {

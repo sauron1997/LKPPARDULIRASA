@@ -3,6 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { AlertCircle, CheckCircle2, GraduationCap, LogIn } from 'lucide-react';
 import SEO from '../../components/SEO/SEO';
+import { FormField } from '../../components/ui/form-field';
+import { AuthCardSkeleton } from '../../components/ui/skeleton';
 import { useAuth } from '../../context/useAuth';
 import './Pages.css';
 
@@ -24,7 +26,7 @@ export default function LoginPage() {
   });
 
   if (isLoadingSession) {
-    return null;
+    return <AuthCardSkeleton title="Memuat halaman login…" />;
   }
 
   if (isAuthenticated) {
@@ -69,34 +71,29 @@ export default function LoginPage() {
           ) : null}
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
-            <div className="form-group">
-              <label className="required" htmlFor="login-identifier">Email, Username, atau NIS</label>
-              <input
-                id="login-identifier"
-                type="text"
-                placeholder="contoh: email@contoh.com atau PRK-2026-001"
-                autoComplete="username"
-                className={errors.identifier ? 'input-error' : ''}
-                {...register('identifier', { required: 'Identifier login wajib diisi' })}
-              />
-              {errors.identifier ? (
-                <span className="form-error">{errors.identifier.message}</span>
-              ) : (
-                <small>Siswa baru menggunakan email saat pendaftaran. Admin tetap bisa login dengan username lama.</small>
-              )}
-            </div>
-            <div className="form-group">
-              <label className="required" htmlFor="login-password">Password</label>
-              <input
-                id="login-password"
-                type="password"
-                placeholder="Masukkan password"
-                autoComplete="current-password"
-                className={errors.password ? 'input-error' : ''}
-                {...register('password', { required: 'Password wajib diisi' })}
-              />
-              {errors.password ? <span className="form-error">{errors.password.message}</span> : null}
-            </div>
+            <FormField
+              label="Email, Username, atau NIS"
+              name="identifier"
+              id="login-identifier"
+              type="text"
+              placeholder="contoh: email@contoh.com atau PRK-2026-001"
+              autoComplete="username"
+              required
+              error={errors.identifier?.message}
+              hint="Siswa baru menggunakan email saat pendaftaran. Admin tetap bisa login dengan username lama."
+              {...register('identifier', { required: 'Identifier login wajib diisi' })}
+            />
+            <FormField
+              label="Password"
+              name="password"
+              id="login-password"
+              type="password"
+              placeholder="Masukkan password"
+              autoComplete="current-password"
+              required
+              error={errors.password?.message}
+              {...register('password', { required: 'Password wajib diisi' })}
+            />
             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }} disabled={isSubmitting}>
               <LogIn size={16} /> {isSubmitting ? 'Memproses...' : 'Masuk'}
             </button>

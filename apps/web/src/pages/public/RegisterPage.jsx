@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { ArrowLeft, ArrowRight, CheckCircle, Upload, UserPlus } from 'lucide-react';
 import SEO from '../../components/SEO/SEO';
+import { FormField } from '../../components/ui/form-field';
+import { AuthCardSkeleton } from '../../components/ui/skeleton';
 import { useCreateRegistrationMutation } from '../../hooks/registrations/useRegistrationMutations';
 import { useRegistrationOptionsQuery } from '../../hooks/registrations/useRegistrationQueries';
 import './Pages.css';
@@ -168,11 +170,7 @@ export default function RegisterPage() {
     return (
       <div className="page-wrapper">
         <SEO title="Pendaftaran Siswa Baru" description="Memuat formulir pendaftaran siswa baru." />
-        <div className="container section">
-          <div className="auth-card">
-            <p>Menyiapkan formulir pendaftaran...</p>
-          </div>
-        </div>
+        <AuthCardSkeleton title="Memuat formulir pendaftaran…" />
       </div>
     );
   }
@@ -240,105 +238,96 @@ export default function RegisterPage() {
 
             {step === 1 ? (
               <div className="animate-fade-in">
-                <div className="form-group">
-                  <label className="required" htmlFor="register-name">Nama Lengkap</label>
-                  <input
-                    id="register-name"
-                    placeholder="Masukkan nama lengkap"
-                    autoComplete="name"
-                    className={errors.name ? 'input-error' : ''}
-                    {...register('name', {
-                      required: 'Nama wajib diisi',
-                      minLength: { value: 3, message: 'Nama minimal 3 karakter' },
-                    })}
-                  />
-                  {errors.name ? <span className="form-error">{errors.name.message}</span> : null}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-email">Email Login</label>
-                  <input
-                    id="register-email"
-                    type="email"
-                    placeholder="email@contoh.com"
-                    autoComplete="email"
-                    className={errors.email ? 'input-error' : ''}
-                    {...register('email', {
-                      required: 'Email wajib diisi',
-                      pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Format email tidak valid' },
-                    })}
-                  />
-                  {errors.email ? (
-                    <span className="form-error">{errors.email.message}</span>
-                  ) : (
-                    <small>Gunakan email ini untuk login ke dashboard siswa.</small>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-password">Password</label>
-                  <input
-                    id="register-password"
-                    type="password"
-                    placeholder="Minimal 6 karakter"
-                    autoComplete="new-password"
-                    className={errors.password ? 'input-error' : ''}
-                    {...register('password', {
-                      required: 'Password wajib diisi',
-                      minLength: { value: 6, message: 'Password minimal 6 karakter' },
-                    })}
-                  />
-                  {errors.password ? <span className="form-error">{errors.password.message}</span> : null}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-confirm">Konfirmasi Password</label>
-                  <input
-                    id="register-confirm"
-                    type="password"
-                    placeholder="Ulangi password"
-                    autoComplete="new-password"
-                    className={errors.confirmPassword ? 'input-error' : ''}
-                    {...register('confirmPassword', {
-                      required: 'Konfirmasi password wajib diisi',
-                      validate: (value) => value === password || 'Password tidak cocok',
-                    })}
-                  />
-                  {errors.confirmPassword ? <span className="form-error">{errors.confirmPassword.message}</span> : null}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-address">Alamat</label>
-                  <textarea
-                    id="register-address"
-                    placeholder="Alamat lengkap"
-                    autoComplete="street-address"
-                    className={errors.address ? 'input-error' : ''}
-                    {...register('address', { required: 'Alamat wajib diisi' })}
-                  />
-                  {errors.address ? <span className="form-error">{errors.address.message}</span> : null}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-phone">No HP</label>
-                  <input
-                    id="register-phone"
-                    placeholder="08xxxxxxxxxx"
-                    autoComplete="tel"
-                    className={errors.phone ? 'input-error' : ''}
-                    {...register('phone', {
-                      required: 'No HP wajib diisi',
-                      pattern: { value: /^08[0-9]{8,13}$/, message: 'Format: 08xxxxxxxxxx (10-15 digit)' },
-                    })}
-                  />
-                  {errors.phone ? <span className="form-error">{errors.phone.message}</span> : null}
-                </div>
-                <div className="form-group">
-                  <label className="required" htmlFor="register-parent">Nama Orang Tua</label>
-                  <input
-                    id="register-parent"
-                    placeholder="Masukkan nama orang tua/wali"
-                    autoComplete="off"
-                    className={errors.parentName ? 'input-error' : ''}
-                    {...register('parentName', { required: 'Nama orang tua wajib diisi' })}
-                  />
-                  {errors.parentName ? <span className="form-error">{errors.parentName.message}</span> : null}
-                </div>
+                <FormField
+                  label="Nama Lengkap"
+                  name="name"
+                  id="register-name"
+                  placeholder="Masukkan nama lengkap"
+                  autoComplete="name"
+                  required
+                  error={errors.name?.message}
+                  {...register('name', {
+                    required: 'Nama wajib diisi',
+                    minLength: { value: 3, message: 'Nama minimal 3 karakter' },
+                  })}
+                />
+                <FormField
+                  label="Email Login"
+                  name="email"
+                  id="register-email"
+                  type="email"
+                  placeholder="email@contoh.com"
+                  autoComplete="email"
+                  required
+                  error={errors.email?.message}
+                  hint="Gunakan email ini untuk login ke dashboard siswa."
+                  {...register('email', {
+                    required: 'Email wajib diisi',
+                    pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Format email tidak valid' },
+                  })}
+                />
+                <FormField
+                  label="Password"
+                  name="password"
+                  id="register-password"
+                  type="password"
+                  placeholder="Minimal 6 karakter"
+                  autoComplete="new-password"
+                  required
+                  error={errors.password?.message}
+                  {...register('password', {
+                    required: 'Password wajib diisi',
+                    minLength: { value: 6, message: 'Password minimal 6 karakter' },
+                  })}
+                />
+                <FormField
+                  label="Konfirmasi Password"
+                  name="confirmPassword"
+                  id="register-confirm"
+                  type="password"
+                  placeholder="Ulangi password"
+                  autoComplete="new-password"
+                  required
+                  error={errors.confirmPassword?.message}
+                  {...register('confirmPassword', {
+                    required: 'Konfirmasi password wajib diisi',
+                    validate: (value) => value === password || 'Password tidak cocok',
+                  })}
+                />
+                <FormField
+                  label="Alamat"
+                  name="address"
+                  id="register-address"
+                  as="textarea"
+                  placeholder="Alamat lengkap"
+                  autoComplete="street-address"
+                  required
+                  error={errors.address?.message}
+                  {...register('address', { required: 'Alamat wajib diisi' })}
+                />
+                <FormField
+                  label="No HP"
+                  name="phone"
+                  id="register-phone"
+                  placeholder="08xxxxxxxxxx"
+                  autoComplete="tel"
+                  required
+                  error={errors.phone?.message}
+                  {...register('phone', {
+                    required: 'No HP wajib diisi',
+                    pattern: { value: /^08[0-9]{8,13}$/, message: 'Format: 08xxxxxxxxxx (10-15 digit)' },
+                  })}
+                />
+                <FormField
+                  label="Nama Orang Tua"
+                  name="parentName"
+                  id="register-parent"
+                  placeholder="Masukkan nama orang tua/wali"
+                  autoComplete="off"
+                  required
+                  error={errors.parentName?.message}
+                  {...register('parentName', { required: 'Nama orang tua wajib diisi' })}
+                />
               </div>
             ) : null}
 

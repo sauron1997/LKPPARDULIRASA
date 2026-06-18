@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import SEO, { ORGANIZATION_JSON_LD } from '../../components/SEO/SEO';
 import {
   ArrowRight,
   Award,
@@ -142,6 +143,12 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
+      <SEO
+        title="Beranda"
+        description="Lembaga Kursus & Pelatihan Komputer — Belajar Microsoft Office, desain grafis, presentasi, dan aplikasi komputer bersama instruktur berpengalaman dengan sertifikat resmi."
+        type="website"
+        jsonLd={ORGANIZATION_JSON_LD}
+      />
       <section className="hero">
         <div className="hero-orb hero-orb-primary" />
         <div className="hero-orb hero-orb-secondary" />

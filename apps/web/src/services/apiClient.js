@@ -45,6 +45,16 @@ export async function apiRequest(path, options = {}) {
     requestHeaders.set('Content-Type', 'application/json');
   }
 
+  // Include token-based auth header if available (in-memory mode fallback)
+  if (!requestHeaders.has('Authorization')) {
+    const storedToken = (typeof window !== 'undefined')
+      ? localStorage.getItem('lkp_auth_token')
+      : null;
+    if (storedToken) {
+      requestHeaders.set('Authorization', storedToken);
+    }
+  }
+
   const response = await fetch(buildUrl(path), {
     method,
     credentials: 'include',

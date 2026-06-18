@@ -34,72 +34,98 @@ function applyResponseHeaders(res, headers) {
 
 async function handleLogin(req, res) {
   const payload = req.body || {};
-  const persistedIdentity = canUseDatabaseAuthPersistence()
-    ? await findPersistedIdentityByIdentifier(payload.identifier)
-    : null;
-  const { account, user } = persistedIdentity || authService.authenticate(payload);
-  const signInEmail = persistedIdentity?.authUser?.email || account?.email;
+  const useDatabasePersistence = canUseDatabaseAuthPersistence();
 
-  if (!signInEmail) {
-    throw new HttpError(401, 'Email/NIS/username atau password salah.', {
-      code: 'INVALID_CREDENTIALS',
-    });
+  // Try database persistence first if configured
+  if (useDatabasePersistence) {
+    try {
+      const persistedIdentity = await findPersistedIdentityByIdentifier(payload.identifier);
+      if (persistedIdentity) {
+        // User exists in database - verify password with Better-Auth
+        const signInEmail = persistedIdentity.authUser?.email || persistedIdentity.account?.email;
+        if (!signInEmail) {
+          throw new HttpError(401, 'Email/NIS/username atau password salah.', {
+            code: 'INVALID_CREDENTIALS',
+          });
+        }
+
+        try {
+          const response = await auth.api.signInEmail({
+            body: {
+              email: signInEmail,
+              password: payload?.password,
+            },
+            headers: fromNodeHeaders(req.headers),
+            asResponse: true,
+          });
+          applyResponseHeaders(res, response.headers);
+          const healedIdentity = await ensurePersistedIdentityLink({
+            authUserId: persistedIdentity.authUser?.id || null,
+            identifier: payload.identifier,
+          }).catch(() => persistedIdentity);
+          ok(res, { token: null, user: healedIdentity?.user || persistedIdentity.user });
+          return;
+        } catch (error) {
+          // Better-Auth signInEmail failed - password mismatch
+          throw new HttpError(401, 'Email/NIS/username atau password salah.', {
+            code: 'INVALID_CREDENTIALS',
+            details: error?.message || null,
+          });
+        }
+      }
+    } catch (error) {
+      // Re-throw HttpError
+      if (error instanceof HttpError) throw error;
+      // For other DB errors, fall through to in-memory mode
+      console.warn('Database auth failed, falling back to in-memory:', error?.message);
+    }
   }
 
+  // In-memory mode: authenticate against seed data
   try {
-    if (!persistedIdentity) {
-      await auth.api.signUpEmail({
-        body: {
-          name: user.name,
-          email: user.email,
-          password: payload?.password,
-          username: user.role === 'student' && user.nis ? user.nis : user.username || user.email,
-          role: user.role,
-          studentId: user.studentId != null ? String(user.studentId) : undefined,
-          nis: user.nis || undefined,
-          accountId: user.accountId || account.id,
-          courseId: user.courseId != null ? String(user.courseId) : undefined,
-          enrollmentId: user.enrollmentId || undefined,
-        },
-        headers: fromNodeHeaders(req.headers),
-      });
-    }
-  } catch (error) {
-    if (!persistedIdentity && ![400, 409, 422].includes(error?.statusCode)) {
-      throw new HttpError(error?.statusCode || 500, error?.message || 'Provisioning auth gagal diproses.', {
-        code: error?.code || 'AUTH_PROVISION_FAILED',
-      });
-    }
-  }
+    const authResult = authService.authenticate(payload);
+    const { account, user, token } = authResult;
+    const signInEmail = account?.email || user?.email;
 
-  let response;
-  try {
-    response = await auth.api.signInEmail({
-      body: {
-        email: signInEmail,
-        password: payload?.password,
-      },
-      headers: fromNodeHeaders(req.headers),
-      asResponse: true,
-    });
+    // If database persistence is available, sync the user to Better-Auth
+    if (useDatabasePersistence && signInEmail) {
+      try {
+        // Try to sign up in Better-Auth (ignore if user already exists)
+        await auth.api.signUpEmail({
+          body: {
+            name: user.name,
+            email: signInEmail,
+            password: payload?.password,
+            username: user.role === 'student' && user.nis ? user.nis : user.username || signInEmail,
+            role: user.role,
+            studentId: user.studentId != null ? String(user.studentId) : undefined,
+            nis: user.nis || undefined,
+            accountId: user.accountId || account.id,
+            courseId: user.courseId != null ? String(user.courseId) : undefined,
+            enrollmentId: user.enrollmentId || undefined,
+          },
+          headers: fromNodeHeaders(req.headers),
+        }).catch((err) => {
+          // Ignore 400, 409, 422 errors (user exists or validation issues)
+          if (![400, 409, 422].includes(err?.statusCode)) {
+            console.warn('Auth provisioning warning:', err?.message);
+          }
+        });
+      } catch (provisionError) {
+        // Non-critical - user is already authenticated via in-memory
+        console.warn('Auth provisioning skipped:', provisionError?.message);
+      }
+    }
+
+    // Return in-memory session token (already created by authenticate())
+    ok(res, { token, user });
+    return;
   } catch (error) {
     throw new HttpError(401, 'Email/NIS/username atau password salah.', {
       code: 'INVALID_CREDENTIALS',
       details: error?.message || null,
     });
   }
-
-  applyResponseHeaders(res, response.headers);
-  const healedIdentity = canUseDatabaseAuthPersistence()
-    ? await ensurePersistedIdentityLink({
-      authUserId: persistedIdentity?.authUser?.id || null,
-      identifier: payload.identifier,
-    }).catch(() => persistedIdentity)
-    : null;
-  const result = persistedIdentity
-    ? { token: null, user: healedIdentity?.user || user }
-    : authService.login(payload);
-  ok(res, result);
 }
 
 async function handleSession(req, res) {

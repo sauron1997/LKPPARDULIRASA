@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Send, MapPin, Phone, Mail, CheckCircle } from 'lucide-react';
 import SEO from '../../components/SEO/SEO';
+import { FormField } from '../../components/ui/form-field';
 import { useSubmitPublicContactMessageMutation } from '../../hooks/public/usePublicMutations';
 import { usePublicProfileQuery } from '../../hooks/public/usePublicQueries';
 import './Pages.css';
@@ -58,86 +59,57 @@ export default function ContactPage() {
               </div>
             ) : null}
             <form onSubmit={handleSubmit(onSubmit)} noValidate>
-              <div className="form-group">
-                <label className="required" htmlFor="contact-name">Nama</label>
-                <input
-                  id="contact-name"
-                  type="text"
-                  placeholder="Nama lengkap Anda"
-                  autoComplete="name"
-                  className={errors.name ? 'input-error' : ''}
-                  aria-describedby={errors.name ? 'contact-name-error' : undefined}
-                  aria-invalid={errors.name ? 'true' : 'false'}
-                  {...register('name', {
-                    required: 'Nama wajib diisi',
-                    minLength: { value: 3, message: 'Nama minimal 3 karakter' }
-                  })}
-                />
-                {errors.name && (
-                  <span id="contact-name-error" className="form-error" role="alert">
-                    {errors.name.message}
-                  </span>
-                )}
-              </div>
-              <div className="form-group">
-                <label className="required" htmlFor="contact-email">Email</label>
-                <input
-                  id="contact-email"
-                  type="email"
-                  placeholder="email@contoh.com"
-                  autoComplete="email"
-                  className={errors.email ? 'input-error' : ''}
-                  aria-describedby={errors.email ? 'contact-email-error' : undefined}
-                  aria-invalid={errors.email ? 'true' : 'false'}
-                  {...register('email', {
-                    required: 'Email wajib diisi',
-                    pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Format email tidak valid' }
-                  })}
-                />
-                {errors.email && (
-                  <span id="contact-email-error" className="form-error" role="alert">
-                    {errors.email.message}
-                  </span>
-                )}
-              </div>
-              <div className="form-group">
-                <label className="required" htmlFor="contact-address">Alamat</label>
-                <input
-                  id="contact-address"
-                  type="text"
-                  placeholder="Alamat lengkap Anda"
-                  autoComplete="street-address"
-                  className={errors.address ? 'input-error' : ''}
-                  aria-describedby={errors.address ? 'contact-address-error' : undefined}
-                  aria-invalid={errors.address ? 'true' : 'false'}
-                  {...register('address', { required: 'Alamat wajib diisi' })}
-                />
-                {errors.address && (
-                  <span id="contact-address-error" className="form-error" role="alert">
-                    {errors.address.message}
-                  </span>
-                )}
-              </div>
-              <div className="form-group">
-                <label className="required" htmlFor="contact-message">Pertanyaan / Pesan</label>
-                <textarea
-                  id="contact-message"
-                  placeholder="Tulis pertanyaan Anda seputar program kursus komputer..."
-                  autoComplete="off"
-                  className={errors.message ? 'input-error' : ''}
-                  aria-describedby={errors.message ? 'contact-message-error' : undefined}
-                  aria-invalid={errors.message ? 'true' : 'false'}
-                  {...register('message', {
-                    required: 'Pesan wajib diisi',
-                    minLength: { value: 10, message: 'Pesan minimal 10 karakter' }
-                  })}
-                />
-                {errors.message && (
-                  <span id="contact-message-error" className="form-error" role="alert">
-                    {errors.message.message}
-                  </span>
-                )}
-              </div>
+              <FormField
+                label="Nama"
+                name="name"
+                id="contact-name"
+                placeholder="Nama lengkap Anda"
+                autoComplete="name"
+                required
+                error={errors.name?.message}
+                {...register('name', {
+                  required: 'Nama wajib diisi',
+                  minLength: { value: 3, message: 'Nama minimal 3 karakter' }
+                })}
+              />
+              <FormField
+                label="Email"
+                name="email"
+                id="contact-email"
+                type="email"
+                placeholder="email@contoh.com"
+                autoComplete="email"
+                required
+                error={errors.email?.message}
+                {...register('email', {
+                  required: 'Email wajib diisi',
+                  pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Format email tidak valid' }
+                })}
+              />
+              <FormField
+                label="Alamat"
+                name="address"
+                id="contact-address"
+                placeholder="Alamat lengkap Anda"
+                autoComplete="street-address"
+                required
+                error={errors.address?.message}
+                {...register('address', { required: 'Alamat wajib diisi' })}
+              />
+              <FormField
+                label="Pertanyaan / Pesan"
+                name="message"
+                id="contact-message"
+                as="textarea"
+                placeholder="Tulis pertanyaan Anda seputar program kursus komputer..."
+                autoComplete="off"
+                required
+                error={errors.message?.message}
+                {...register('message', {
+                  required: 'Pesan wajib diisi',
+                  minLength: { value: 10, message: 'Pesan minimal 10 karakter' }
+                })}
+              />
               <button
                 type="submit"
                 className="btn btn-primary"
