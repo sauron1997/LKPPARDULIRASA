@@ -170,7 +170,7 @@ function buildInitialMediaLibrary(seed) {
       name: item.documentName || item.title,
       type: 'document',
       url: item.documentUrl,
-      mimeType:'application/pdf',
+      mimeType: 'application/pdf',
       isObjectUrl: false,
       createdAt: item.updatedAt || new Date().toISOString(),
       updatedAt: item.updatedAt || new Date().toISOString(),
@@ -268,10 +268,48 @@ export function resetBackendState(seedState = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Index builder (extracted for reuse)
+// ---------------------------------------------------------------------------
+
+function buildIndexes(collections) {
+  return {
+    accountsById: buildSingleIndex(collections.accounts, (item) => item.id),
+    accountsByStudentId: buildSingleIndex(collections.accounts, (item) => item.studentId),
+    studentsById: buildSingleIndex(collections.students, (item) => item.id),
+    studentsByEmail: buildSingleIndex(collections.students, (item) => normalizeLoginIdentifier(item.email)),
+    studentsByNis: buildSingleIndex(collections.students, (item) => item.nis),
+    enrollmentsById: buildSingleIndex(collections.enrollments, (item) => item.id),
+    enrollmentsByStudentId: buildSingleIndex(collections.enrollments, (item) => item.studentId),
+    coursesById: buildSingleIndex(collections.courses, (item) => item.id),
+    definitionsByCourseId: buildGroupedIndex(collections.assessmentDefinitions, (item) => item.courseId),
+    definitionsByCourseType: buildSingleIndex(
+      collections.assessmentDefinitions,
+      (item) => `${toKey(item.courseId)}:${normalizeAssessmentType(item.type)}`,
+    ),
+    modulesByCourseId: buildGroupedIndex(collections.modules, (item) => item.courseId),
+    progressByStudentId: buildGroupedIndex(collections.assessmentProgress, (item) => item.studentId),
+    progressByEnrollmentId: buildGroupedIndex(collections.assessmentProgress, (item) => item.enrollmentId),
+    submissionsByStudentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.studentId),
+    submissionsByEnrollmentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.enrollmentId),
+    scheduleSessionsByCourseId: buildGroupedIndex(collections.scheduleSessions, (item) => item.courseId),
+    scheduleAssignmentsBySessionId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.sessionId),
+    scheduleAssignmentsByEnrollmentId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.enrollmentId),
+    attendanceBySessionId: buildGroupedIndex(collections.attendanceRecords, (item) => item.sessionId),
+    attendanceByEnrollmentId: buildGroupedIndex(collections.attendanceRecords, (item) => item.enrollmentId),
+    attendanceBySessionEnrollment: buildSingleIndex(collections.attendanceRecords, (item) => `${item.sessionId}:${item.enrollmentId}`),
+    threadsByStudentId: buildGroupedIndex(collections.studentMessages, (item) => item.studentId),
+    certificatesByStudentId: buildGroupedIndex(collections.certificates, (item) => item.studentId),
+    certificatesByEnrollmentId: buildGroupedIndex(collections.certificates, (item) => item.enrollmentId),
+    certificatesByNis: buildGroupedIndex(collections.certificates, (item) => item.nis),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main context factory
 // ---------------------------------------------------------------------------
 
-export function rebuildMediaLibrary(options = {}) {const context = createBackendContext(options);
+export function rebuildMediaLibrary(options = {}) {
+  const context = createBackendContext(options);
   const seed = {
     galleryItems: context.repositories.galleryItems.list(),
     blogPosts: context.repositories.blogPosts.list(),
@@ -293,10 +331,18 @@ export function createBackendContext(options = {}) {
     ...(options.context?.repositories || {}),
     ...(options.repositories || {}),
   };
+
+  // Versioned cache with bounded TTL. The reference-equality check still catches
+  // the common case (in-memory array identity changes after every write), but
+  // the TTL provides a safety net against accidental unbounded staleness.
+  const CACHE_TTL_MS = 30_000;
   let collectionCache = null;
   let indexCache = null;
+  let cacheVersion = 1;
+  let cacheTimestamp = 0;
 
   function getCollections() {
+    const now = Date.now();
     const nextCollections = {
       accounts: repositories.accounts.raw(),
       students: repositories.students.raw(),
@@ -312,55 +358,31 @@ export function createBackendContext(options = {}) {
       certificates: repositories.certificates.raw(),
       studentMessages: repositories.studentMessages.raw(),
       publicMessages: repositories.publicMessages.raw(),
-      blogPosts: repositories.blogPosts.raw(),};
+      blogPosts: repositories.blogPosts.raw(),
+    };
 
-    if (
-      collectionCache
-      && Object.keys(nextCollections).every((key) => collectionCache[key] === nextCollections[key])
-    ) {
+    const refsUnchanged = collectionCache
+      && Object.keys(nextCollections).every((key) => collectionCache[key] === nextCollections[key]);
+    const withinTtl = collectionCache && (now - cacheTimestamp) <= CACHE_TTL_MS;
+
+    if (refsUnchanged && withinTtl) {
       return collectionCache;
     }
 
+    if (!refsUnchanged) {
+      cacheVersion += 1;
+    }
     collectionCache = nextCollections;
+    cacheTimestamp = now;
     indexCache = null;
     return collectionCache;
   }
 
   function getIndexes() {
     const collections = getCollections();
-    if (indexCache) return indexCache;
-
-    indexCache = {
-      accountsById: buildSingleIndex(collections.accounts, (item) => item.id),
-      accountsByStudentId: buildSingleIndex(collections.accounts, (item) => item.studentId),
-      studentsById: buildSingleIndex(collections.students, (item) => item.id),
-      studentsByEmail: buildSingleIndex(collections.students, (item) => normalizeLoginIdentifier(item.email)),
-      studentsByNis: buildSingleIndex(collections.students, (item) => item.nis),
-      enrollmentsById: buildSingleIndex(collections.enrollments, (item) => item.id),
-      enrollmentsByStudentId: buildSingleIndex(collections.enrollments, (item) => item.studentId),
-      coursesById: buildSingleIndex(collections.courses, (item) => item.id),
-      definitionsByCourseId: buildGroupedIndex(collections.assessmentDefinitions, (item) => item.courseId),
-      definitionsByCourseType: buildSingleIndex(
-        collections.assessmentDefinitions,
-        (item) => `${toKey(item.courseId)}:${normalizeAssessmentType(item.type)}`,
-      ),
-      modulesByCourseId: buildGroupedIndex(collections.modules, (item) => item.courseId),
-      progressByStudentId: buildGroupedIndex(collections.assessmentProgress, (item) => item.studentId),
-      progressByEnrollmentId: buildGroupedIndex(collections.assessmentProgress, (item) => item.enrollmentId),
-      submissionsByStudentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.studentId),
-      submissionsByEnrollmentId: buildGroupedIndex(collections.assessmentSubmissions, (item) => item.enrollmentId),
-      scheduleSessionsByCourseId: buildGroupedIndex(collections.scheduleSessions, (item) => item.courseId),
-      scheduleAssignmentsBySessionId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.sessionId),
-      scheduleAssignmentsByEnrollmentId: buildGroupedIndex(collections.scheduleAssignments, (item) => item.enrollmentId),
-      attendanceBySessionId: buildGroupedIndex(collections.attendanceRecords, (item) => item.sessionId),
-      attendanceByEnrollmentId: buildGroupedIndex(collections.attendanceRecords, (item) => item.enrollmentId),
-      attendanceBySessionEnrollment: buildSingleIndex(collections.attendanceRecords, (item) => `${item.sessionId}:${item.enrollmentId}`),
-      threadsByStudentId: buildGroupedIndex(collections.studentMessages, (item) => item.studentId),
-      certificatesByStudentId: buildGroupedIndex(collections.certificates, (item) => item.studentId),
-      certificatesByEnrollmentId: buildGroupedIndex(collections.certificates, (item) => item.enrollmentId),
-      certificatesByNis: buildGroupedIndex(collections.certificates, (item) => item.nis),
-    };
-
+    if (!indexCache || indexCache.__version !== cacheVersion) {
+      indexCache = { __version: cacheVersion, ...buildIndexes(collections) };
+    }
     return indexCache;
   }
 

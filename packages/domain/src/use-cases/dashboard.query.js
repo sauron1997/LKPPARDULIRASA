@@ -43,6 +43,24 @@ export function createDashboardQuery(deps) {
       ? enrollments.map((e) => ({ enrollmentId: e.id, studentId: e.studentId, courseId: e.courseId }))
       : students.map((s) => ({ enrollmentId: s.enrollmentId, studentId: s.id, courseId: s.courseId }));
 
+// Build O(1) lookup maps once — avoids O(n) scans inside the references loop.
+    const studentMap = new Map(students.map((s) => [toKey(s.id), s]));
+    const enrollmentMap = new Map(enrollments.map((e) => [toKey(e.id), e]));
+    const courseMap = new Map(courses.map((c) => [toKey(c.id), c]));
+    const progressByEnrollment = new Map();
+    for (const p of allProgress) {
+      const key = toKey(p.enrollmentId);
+      if (!progressByEnrollment.has(key)) progressByEnrollment.set(key, []);
+      progressByEnrollment.get(key).push(p);
+    }
+    const submissionsByEnrollment = new Map();
+    for (const s of allSubmissions) {
+      const key = toKey(s.enrollmentId);
+      if (!submissionsByEnrollment.has(key)) submissionsByEnrollment.set(key, []);
+      submissionsByEnrollment.get(key).push(s);
+    }
+    const certByStudent = new Map(certs.map((c) => [toKey(c.studentId), c]));
+
     const courseHealthMap = new Map(courses.map((c) => [toKey(c.id), {
       course: c, activeStudents: 0, progressTotal: 0, reviewCount: 0, retryCount: 0, eligibleCount: 0,
       publishedAssessmentCount: definitions.filter((d) => toKey(d.courseId) === toKey(c.id) && d.isPublished !== false).length,
@@ -55,14 +73,14 @@ export function createDashboardQuery(deps) {
     const blockedByPayment = [];
 
     references.forEach((ref) => {
-      const student = students.find((s) => toKey(s.id) === toKey(ref.studentId));
-      const enrollment = enrollments.find((e) => toKey(e.id) === toKey(ref.enrollmentId));
-      const course = courses.find((c) => toKey(c.id) === toKey(ref.courseId));
+      const student = studentMap.get(toKey(ref.studentId));
+      const enrollment = enrollmentMap.get(toKey(ref.enrollmentId));
+      const course = courseMap.get(toKey(ref.courseId));
       if (!student || !course) return;
 
-      const progress = allProgress.filter((p) => toKey(p.enrollmentId) === toKey(ref.enrollmentId));
-      const submissions = allSubmissions.filter((s) => toKey(s.enrollmentId) === toKey(ref.enrollmentId));
-      const cert = certs.find((c) => toKey(c.studentId) === toKey(student.id));
+      const progress = progressByEnrollment.get(toKey(ref.enrollmentId)) || [];
+      const submissions = submissionsByEnrollment.get(toKey(ref.enrollmentId)) || [];
+      const cert = certByStudent.get(toKey(student.id));
 
       const completionPercent = enrollment?.progressPercent ??0;
       const reviewCount = submissions.filter((s) => s.status === 'in_review').length;

@@ -17,6 +17,8 @@ export function createStudentUseCases(deps) {
   const now = () => new Date().toISOString();
 
   async function listStudents(filters = {}) {
+    const limit = Number(filters.limit) > 0 ? Math.min(Number(filters.limit), 500) : null;
+    const offset = Number(filters.offset) > 0 ? Number(filters.offset) : 0;
     let students = await studentRepo.list();
 
     if (filters.search) {
@@ -39,7 +41,11 @@ export function createStudentUseCases(deps) {
       );
     }
 
-    return students;
+    const total = students.length;
+    if (limit !== null) {
+      students = students.slice(offset, offset + limit);
+    }
+    return { students, total, limit, offset };
   }
 
   async function getStudent(studentId) {
@@ -65,15 +71,19 @@ export function createStudentUseCases(deps) {
     ensure(student, 'Data siswa tidak ditemukan.', 404, 'STUDENT_NOT_FOUND');
 
     const ts = now();
-    const [allCourses, enrollment] = await Promise.all([
-      courseRepo.list(),
+    const [enrollment, currentAccount] = await Promise.all([
       enrollmentRepo.getByStudentId(studentId),
+      accountRepo.getByStudentId(studentId),
     ]);
 
-    const currentCourse = findCourseByReference(allCourses, {
-      courseId: payload.courseId ?? student.courseId ?? null,
-      program: payload.program ?? student.program ?? null,
-    });
+    // Targeted course lookup: only fetch the full list when we must match by program name.
+    const targetCourseId = payload.courseId ?? student.courseId ?? enrollment?.courseId ?? null;
+    const targetProgram = payload.program ?? student.program ?? null;
+    let currentCourse = targetCourseId ? await courseRepo.getById(targetCourseId) : null;
+    if (!currentCourse && targetProgram) {
+      const allCourses = await courseRepo.list();
+      currentCourse = findCourseByReference(allCourses, { courseId: null, program: targetProgram });
+    }
 
     const relationFields = {
       courseId: currentCourse?.id ?? student.courseId ?? enrollment?.courseId ?? null,
@@ -105,9 +115,8 @@ export function createStudentUseCases(deps) {
       updatedAt: ts,
     }));
 
-    const account = await accountRepo.getByStudentId(studentId);
-    if (account) {
-      await accountRepo.update(account.id, (prev) => ({
+    if (currentAccount) {
+      await accountRepo.update(currentAccount.id, (prev) => ({
         ...prev,
         name: payload.name ?? prev.name,
         displayName: payload.name ?? prev.displayName,

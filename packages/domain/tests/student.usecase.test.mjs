@@ -17,18 +17,20 @@ describe('student.usecase.js', () => {
   describe('listStudents()', () => {
     it('returns all students when no filters', async () => {
       const result = await useCases.listStudents();
-      assert(Array.isArray(result));
-      assert(result.length >= 1);
+      assert(Array.isArray(result.students));
+      assert(result.students.length >= 1);
+      assert.equal(result.total, result.students.length);
     });
 
     it('filters by status', async () => {
       const result = await useCases.listStudents({ status: 'Aktif' });
-      assert(result.every((s) => s.status === 'Aktif'));
+      assert(result.students.every((s) => s.status === 'Aktif'));
     });
 
     it('returns empty when no match', async () => {
       const result = await useCases.listStudents({ status: 'NonExistent' });
-      assert(Array.isArray(result));
+      assert(Array.isArray(result.students));
+      assert.equal(result.students.length, 0);
     });
   });
 
