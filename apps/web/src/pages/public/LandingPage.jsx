@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  FileText,
   HelpCircle,
   Image as ImageIcon,
   LayoutDashboard,
@@ -129,10 +130,21 @@ const faqs = [
   },
 ];
 
+function formatBlogDate(value) {
+  if (!value) return '-';
+
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
 export default function LandingPage() {
   const { data } = usePublicLandingQuery();
   const profile = data?.profile || {};
   const courses = data?.courses || [];
+  const latestBlogPosts = data?.latestBlogPosts || [];
   const whatsappPhone = String(profile.phone || '6281234567890').replace(/[^\d]/g, '');
   const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${whatsappMessage}`;
   const featuredCourses = data?.featuredCourses || courses.slice(0, 3);
@@ -365,6 +377,49 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {latestBlogPosts.length ? (
+        <section className="section blog-section">
+          <div className="container">
+            <div className="section-header flex-between">
+              <div>
+                <span className="section-eyebrow">Artikel & Wawasan</span>
+                <h2>Bacaan Terbaru dari LKP Parduli Rasa</h2>
+                <p>Informasi, tips, dan berita seputar dunia komputer dan kegiatan lembaga kami.</p>
+              </div>
+              <Link to="/blog" className="btn btn-outline">
+                Semua Artikel <ChevronRight size={16} />
+              </Link>
+            </div>
+            <div className="blog-landing-grid">
+              {latestBlogPosts.map((post) => (
+                <Link key={post.id} to={`/blog/${post.id}`} className="blog-landing-card card">
+                  <div className="blog-landing-card-image">
+                    {post.image ? (
+                      <img src={post.image} alt={post.title} loading="lazy" />
+                    ) : (
+                      <div className="blog-landing-placeholder">
+                        <FileText size={36} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="card-body">
+                    <div className="blog-landing-meta">
+                      <span className="badge badge-info">{post.category}</span>
+                      <span className="blog-landing-date">{formatBlogDate(post.publishedAt || post.date)}</span>
+                    </div>
+                    <h3>{post.title}</h3>
+                    <p>{post.summary}</p>
+                    <span className="blog-landing-read-more">
+                      Baca Selengkapnya <ArrowRight size={14} />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="section faq-section">
         <div className="container faq-layout">

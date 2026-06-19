@@ -1,4 +1,4 @@
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const enrollmentStatusEnum = pgEnum('enrollment_status', ['active', 'completed', 'cancelled']);
 export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'verified', 'rejected']);
@@ -25,7 +25,11 @@ export const enrollments = pgTable('enrollments', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  studentIdx: index('enrollments_student_idx').on(table.studentId),
+  courseIdx: index('enrollments_course_idx').on(table.courseId),
+  statusIdx: index('enrollments_status_idx').on(table.status),
+}));
 
 export const assessmentDefinitions = pgTable('assessment_definitions', {
   id: text('id').primaryKey(),
@@ -77,6 +81,8 @@ export const assessmentProgress = pgTable('assessment_progress', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   progressIndex: uniqueIndex('assessment_progress_enrollment_type_unique_idx').on(table.enrollmentId, table.type),
+  studentIdx: index('assessment_progress_student_idx').on(table.studentId),
+  courseIdx: index('assessment_progress_course_idx').on(table.courseId),
 }));
 
 export const assessmentSubmissions = pgTable('assessment_submissions', {
@@ -97,7 +103,11 @@ export const assessmentSubmissions = pgTable('assessment_submissions', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  studentIdx: index('assessment_submissions_student_idx').on(table.studentId),
+  courseIdx: index('assessment_submissions_course_idx').on(table.courseId),
+  definitionIdx: index('assessment_submissions_definition_idx').on(table.definitionId),
+}));
 
 export const submissionAnswers = pgTable('submission_answers', {
   id: text('id').primaryKey(),
@@ -129,7 +139,10 @@ export const scheduleSessions = pgTable('schedule_sessions', {
   endAt: timestamp('end_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  startAtIdx: index('schedule_sessions_start_at_idx').on(table.startAt),
+  courseIdx: index('schedule_sessions_course_idx').on(table.courseId),
+}));
 
 export const scheduleAssignments = pgTable('schedule_assignments', {
   id: text('id').primaryKey(),
@@ -143,6 +156,8 @@ export const scheduleAssignments = pgTable('schedule_assignments', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   assignmentIndex: uniqueIndex('schedule_assignment_session_enrollment_unique_idx').on(table.sessionId, table.enrollmentId),
+  studentIdx: index('schedule_assignments_student_idx').on(table.studentId),
+  courseIdx: index('schedule_assignments_course_idx').on(table.courseId),
 }));
 
 export const attendanceRecords = pgTable('attendance_records', {
@@ -164,6 +179,9 @@ export const attendanceRecords = pgTable('attendance_records', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   attendanceIndex: uniqueIndex('attendance_session_enrollment_unique_idx').on(table.sessionId, table.enrollmentId),
+  studentIdx: index('attendance_records_student_idx').on(table.studentId),
+  courseIdx: index('attendance_records_course_idx').on(table.courseId),
+  markedAtIdx: index('attendance_records_marked_at_idx').on(table.markedAt),
 }));
 
 export const certificates = pgTable('certificates', {
@@ -183,4 +201,6 @@ export const certificates = pgTable('certificates', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   enrollmentIndex: uniqueIndex('certificates_enrollment_unique_idx').on(table.enrollmentId),
+  studentIdx: index('certificates_student_idx').on(table.studentId),
+  courseIdx: index('certificates_course_idx').on(table.courseId),
 }));

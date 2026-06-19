@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const userProfiles = pgTable('user_profiles', {
   authUserId: text('auth_user_id').primaryKey(),
@@ -43,4 +43,6 @@ export const students = pgTable('students', {
 }, (table) => ({
   nisIndex: uniqueIndex('students_nis_unique_idx').on(table.nis),
   emailIndex: uniqueIndex('students_email_unique_idx').on(table.email),
+  accountIdx: index('students_account_id_idx').on(table.accountId),
+  nameIdx: index('students_name_idx').on(table.name),
 }));

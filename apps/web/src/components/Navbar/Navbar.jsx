@@ -10,6 +10,7 @@ const navLinks = [
   { path: '/paket-kursus', label: 'Program' },
   { path: '/galeri', label: 'Galeri' },
   { path: '/akreditasi', label: 'Akreditasi' },
+  { path: '/blog', label: 'Blog' },
   { path: '/contact', label: 'Kontak' },
 ];
 

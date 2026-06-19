@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, FileText, Paperclip, Search, Send, X, Zap } from 'lucide-react';
 import {
   MESSAGE_SORT,
@@ -393,6 +393,9 @@ export default function AdminInboxWorkspace({
   const [attachmentsByThread, setAttachmentsByThread] = useState({});
   const [composerError, setComposerError] = useState('');
   const [toast, setToast] = useState({ title: '', description: '', tone: 'emerald' });
+  const handleToastClose = useCallback(() => {
+    setToast({ title: '', description: '', tone: 'emerald' });
+  }, []);
   const messageListRef = useRef(null);
   const attachmentInputRef = useRef(null);
   const resolvedActiveThreadId = normalizedThreads.some((thread) => thread.id === activeThreadId)
@@ -589,8 +592,8 @@ export default function AdminInboxWorkspace({
         />
       ) : null}
 
-      <AdminSurface className="flex min-h-[680px] min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <div className="flex w-full shrink-0 flex-col border-b border-slate-100 bg-slate-50/45 md:min-w-[320px] md:basis-[34%] md:border-b-0 md:border-r lg:min-w-[340px] xl:basis-[30%]">
+      <AdminSurface className="flex min-h-170 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="flex w-full shrink-0 flex-col border-b border-slate-100 bg-slate-50/45 md:min-w-[320px] md:basis-[34%] md:border-b-0 md:border-r lg:min-w-85 xl:basis-[30%]">
           <div className="space-y-4 border-b border-slate-100 p-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600">
@@ -630,7 +633,7 @@ export default function AdminInboxWorkspace({
             <label className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
               Urutkan
               <select
-                className="min-w-[150px] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-slate-600 outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                className="min-w-37.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-slate-600 outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value)}
               >
@@ -751,7 +754,7 @@ export default function AdminInboxWorkspace({
                         </>
                       )}
                     </div>
-                    <div className={`max-w-[85%] break-words rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm ${message.isAdmin ? 'rounded-tr-sm bg-emerald-600 text-white' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-700'}`}>
+                    <div className={`max-w-[85%] wrap-break-word rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm ${message.isAdmin ? 'rounded-tr-sm bg-emerald-600 text-white' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-700'}`}>
                       {message.body || 'Lampiran tanpa teks'}
                     </div>
                     {message.attachments?.length ? (
@@ -819,7 +822,7 @@ export default function AdminInboxWorkspace({
                     onChange={handleAttachmentSelection}
                   />
                   <textarea
-                    className="min-h-[92px] min-w-0 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+                    className="min-h-23 min-w-0 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
                     placeholder={`Tulis balasan untuk ${activeThread.senderName}...`}
                     value={response}
                     disabled={isReplyPending}
@@ -842,7 +845,7 @@ export default function AdminInboxWorkspace({
                       Lampiran
                     </AdminSecondaryButton>
                     <AdminPrimaryButton
-                      className="h-[76px] min-w-[108px] shrink-0 rounded-[24px] px-4"
+                      className="h-19 min-w-27 shrink-0 rounded-[24px] px-4"
                       disabled={isReplyPending || (!response.trim() && !activeAttachment)}
                       aria-label="Kirim balasan"
                       title="Kirim balasan"
@@ -876,7 +879,7 @@ export default function AdminInboxWorkspace({
         tone={toast.tone}
         title={toast.title}
         description={toast.description}
-        onClose={() => setToast({ title: '', description: '', tone: 'emerald' })}
+        onClose={handleToastClose}
       />
     </div>
   );

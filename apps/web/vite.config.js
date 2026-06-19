@@ -32,4 +32,35 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split vendor code into separate chunks for better caching and faster initial loads.
+        // Public pages (LandingPage, BlogPage) shouldn't pay the cost of admin-only code.
+        // Uses function form because Vite 8 / Rolldown requires manualChunks to be a function.
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-dom') || id.includes('react-router') || id.includes('/react/') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@tanstack')) {
+              return 'vendor-tanstack';
+            }
+            if (id.includes('react-hook-form') || id.includes('react-helmet-async')) {
+              return 'vendor-form';
+            }
+            if (id.includes('@tiptap')) {
+              return 'vendor-tiptap';
+            }
+            if (id.includes('@radix-ui')) {
+              return 'vendor-radix';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+          }
+        },
+      },
+    },
+  },
 });

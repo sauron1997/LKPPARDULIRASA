@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { index, integer, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 export const paymentTransactionStatusEnum = pgEnum('payment_transaction_status', ['pending', 'paid', 'expired', 'failed']);
 
@@ -25,4 +25,8 @@ export const payments = pgTable('payments', {
   rawResponse: text('raw_response'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  studentIdx: index('payments_student_idx').on(table.studentId),
+  statusIdx: index('payments_status_idx').on(table.status),
+  publicAccessTokenIdx: index('payments_public_access_token_idx').on(table.publicAccessToken),
+}));
