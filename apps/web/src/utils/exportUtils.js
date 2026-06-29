@@ -4,6 +4,20 @@
  */
 
 /**
+ * Sanitize a value for safe insertion into HTML to prevent XSS attacks.
+ * @param {*} value - Value to escape
+ * @returns {string} HTML-escaped string
+ */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
  * Export data array to CSV file and trigger download
  * @param {Array<Object>} data - Array of objects to export
  * @param {string} filename - Output filename (without extension)
@@ -51,9 +65,9 @@ export function exportToCSV(data, filename, columns) {
 export function exportToExcel(data, filename, columns) {
   if (!data || data.length === 0) return;
 
-  const headerCells = columns.map(c => `<th style="background:#E8F5E9;font-weight:bold;border:1px solid #ccc;padding:8px">${c.label}</th>`).join('');
+  const headerCells = columns.map(c => `<th style="background:#E8F5E9;font-weight:bold;border:1px solid #ccc;padding:8px">${escapeHtml(c.label)}</th>`).join('');
   const bodyRows = data.map(row =>
-    '<tr>' + columns.map(c => `<td style="border:1px solid #ccc;padding:6px">${row[c.key] ?? ''}</td>`).join('') + '</tr>'
+    '<tr>' + columns.map(c => `<td style="border:1px solid #ccc;padding:6px">${escapeHtml(row[c.key])}</td>`).join('') + '</tr>'
   ).join('');
 
   const html = `
@@ -85,16 +99,16 @@ export function exportToExcel(data, filename, columns) {
 export function exportToPDF(data, title, columns) {
   if (!data || data.length === 0) return;
 
-  const headerCells = columns.map(c => `<th style="background:#4CAF50;color:white;padding:10px 14px;text-align:left;font-size:12px">${c.label}</th>`).join('');
+  const headerCells = columns.map(c => `<th style="background:#4CAF50;color:white;padding:10px 14px;text-align:left;font-size:12px">${escapeHtml(c.label)}</th>`).join('');
   const bodyRows = data.map((row, i) =>
     `<tr style="background:${i % 2 === 0 ? '#fff' : '#F1F8E9'}">` +
-    columns.map(c => `<td style="padding:8px 14px;border-bottom:1px solid #E8F5E9;font-size:11px">${row[c.key] ?? ''}</td>`).join('') +
+    columns.map(c => `<td style="padding:8px 14px;border-bottom:1px solid #E8F5E9;font-size:11px">${escapeHtml(row[c.key])}</td>`).join('') +
     '</tr>'
   ).join('');
 
   const printWindow = window.open('', '_blank');
   printWindow.document.write(`
-    <!DOCTYPE html><html><head><title>${title}</title>
+    <!DOCTYPE html><html><head><title>${escapeHtml(title)}</title>
     <style>
       body { font-family: 'Inter', Arial, sans-serif; padding: 24px; }
       h1 { font-size: 18px; color: #1B5E20; margin-bottom: 4px; }
@@ -102,7 +116,7 @@ export function exportToPDF(data, title, columns) {
       table { width: 100%; border-collapse: collapse; }
       @media print { body { padding: 0; } }
     </style></head><body>
-    <h1>${title}</h1>
+    <h1>${escapeHtml(title)}</h1>
     <p>LKP Parduli Rasa Komputer — Dicetak: ${new Date().toLocaleDateString('id-ID')}</p>
     <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
     </body></html>

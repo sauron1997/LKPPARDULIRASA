@@ -36,3 +36,17 @@ graphify-out/.needs_update
 *.njsproj
 *.sln
 *.sw?
+
+# === Ruflo (Claude Flow) — local only, never commit ===
+.claude/
+.claude-flow/
+.claude-plugin/
+CLAUDE.md
+CLAUDE.local.md
+agentdb.rvf
+agentdb.rvf.lock
+.ruflo/
+.mcp.json
+
+# === Scripts dengan credentials — jangan commit ===
+scripts/update-admin.mjs

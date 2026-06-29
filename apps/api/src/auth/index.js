@@ -16,7 +16,7 @@ const authOptions = {
   emailAndPassword: {
     enabled: true,
     autoSignIn: false,
-    minPasswordLength: 6,
+    minPasswordLength: 8,
   },
   user: {
     additionalFields: {

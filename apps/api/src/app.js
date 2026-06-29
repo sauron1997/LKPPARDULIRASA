@@ -1,3 +1,4 @@
+import helmet from 'helmet';
 import cors from 'cors';
 import express from 'express';
 import { existsSync } from 'node:fs';
@@ -82,6 +83,7 @@ export async function createApp(options = {}) {
   const authHandler = await createAuthHandler();
 
   app.disable('x-powered-by');
+  app.use(helmet());
   if (env.isProduction) {
     // Respect forwarded protocol/host when running behind Nginx on the VPS.
     app.set('trust proxy', 1);

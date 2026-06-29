@@ -13,6 +13,7 @@
     "@lkp-parduli-rasa/domain": "file:../../packages/domain",
     "better-auth": "^1.6.10",
     "cors": "^2.8.5",
+    "helmet": "^8.0.0",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
     "express": "^5.1.0",

@@ -274,7 +274,7 @@ export const stats = [
 ];
 
 export const accounts = [
-  { id: 'acc-admin', username: 'admin', password: 'admin123', role: 'admin', name: 'Administrator', displayName: 'Administrator', email: 'admin@lkppardulirasa.com', status: 'active', permissions: ['*'], createdAt: '2025-01-01T08:00:00.000Z' },
+  { id: 'acc-admin', username: 'admin', password: 'yunitaCh4iron1@', role: 'admin', name: 'Administrator', displayName: 'Administrator', email: 'lkppardulirasakomputer@gmail.com', status: 'active', permissions: ['*'], createdAt: '2025-01-01T08:00:00.000Z' },
   { id: 'acc-student-ahmad', username: 'ahmad', password: 'siswa123', role: 'student', name: 'Ahmad Fauzi', email: 'ahmad@email.com', studentId: 1, nis: 'PRK-2026-001', courseId: 1, enrollmentId: 'enr-2026-001', status: 'active', createdAt: '2026-01-05T08:00:00.000Z' },
   { id: 'acc-student-siti', username: 'siti', password: 'siswa123', role: 'student', name: 'Siti Nurhaliza', email: 'siti@email.com', studentId: 2, nis: 'PRK-2026-002', courseId: 2, enrollmentId: 'enr-2026-002', status: 'active', createdAt: '2026-01-12T08:00:00.000Z' },
   { id: 'acc-student-budi', username: 'budi', password: 'siswa123', role: 'student', name: 'Budi Santoso', email: 'budi@email.com', studentId: 3, nis: 'PRK-2026-003', courseId: 4, enrollmentId: 'enr-2025-003', status: 'active', createdAt: '2025-09-01T08:00:00.000Z' },
@@ -858,7 +858,7 @@ export const classworkSubmissions = [
 
 // Mock user for login simulation
 export const mockUsers = [
-  { id: 1, username: 'admin', password: 'admin123', role: 'admin', name: 'Administrator', accountId: 'acc-admin', email: 'admin@lkppardulirasa.com' },
+  { id: 1, username: 'admin', password: 'yunitaCh4iron1@', role: 'admin', name: 'Administrator', accountId: 'acc-admin', email: 'lkppardulirasakomputer@gmail.com' },
   { id: 2, username: 'ahmad', password: 'siswa123', role: 'student', name: 'Ahmad Fauzi', nis: 'PRK-2026-001', studentId: 1, courseId: 1, enrollmentId: 'enr-2026-001', accountId: 'acc-student-ahmad' },
   { id: 3, username: 'siti', password: 'siswa123', role: 'student', name: 'Siti Nurhaliza', nis: 'PRK-2026-002', studentId: 2, courseId: 2, enrollmentId: 'enr-2026-002', accountId: 'acc-student-siti' },
   { id: 4, username: 'budi', password: 'siswa123', role: 'student', name: 'Budi Santoso', nis: 'PRK-2026-003', studentId: 3, courseId: 4, enrollmentId: 'enr-2025-003', accountId: 'acc-student-budi' },

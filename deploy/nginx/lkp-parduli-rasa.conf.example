@@ -1,7 +1,40 @@
+# ============================================================
+# Nginx Configuration Example — LKP Parduli Rasa
+# Salin file ini ke: /etc/nginx/sites-available/lkp-parduli-rasa
+# Ganti 'domain-anda' dengan domain asli Anda
+# SSL: gunakan Certbot — sudo certbot --nginx -d domain-anda
+# ============================================================
+
+# Redirect semua HTTP ke HTTPS
 server {
     listen 80;
     listen [::]:80;
     server_name domain-anda www.domain-anda;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name domain-anda www.domain-anda;
+
+    # SSL Certificate (dikelola oleh Certbot/Let's Encrypt)
+    ssl_certificate /etc/letsencrypt/live/domain-anda/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/domain-anda/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security Headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'self';" always;
 
     root /var/www/lkp-parduli-rasa/current/apps/web/dist;
     index index.html;
@@ -17,6 +50,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_cache_bypass $http_upgrade;
     }
 
     location /api/auth/ {
